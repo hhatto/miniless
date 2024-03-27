@@ -19,7 +19,10 @@ use grep::searcher::sinks::UTF8;
 use grep::searcher::SearcherBuilder;
 
 #[derive(Parser)]
-#[clap(version = "0.0.1", author = "hhatto")]
+#[clap(
+    version = env!("CARGO_PKG_VERSION"),
+    author = env!("CARGO_PKG_AUTHORS")
+)]
 struct Opts {
     input: String,
 }
