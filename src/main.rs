@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::stdout;
+use std::io;
 
 use clap::Parser;
 use crossterm::{
@@ -12,7 +13,6 @@ use crossterm::{
     style::{Color, Print, ResetColor, SetBackgroundColor},
     terminal,
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, ScrollDown, ScrollUp},
-    Result,
 };
 use grep::regex::RegexMatcher;
 use grep::searcher::sinks::UTF8;
@@ -91,7 +91,7 @@ impl SearchResult {
 const STATUS_LINE_OFFSET: usize = 2;
 const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
 
-fn search(filename: &str, search_word: &str) -> Result<Vec<u64>> {
+fn search(filename: &str, search_word: &str) -> io::Result<Vec<u64>> {
     let matcher = RegexMatcher::new(search_word).unwrap();
     let mut matches: Vec<u64> = vec![];
     let mut searcher = SearcherBuilder::new().build();
@@ -106,7 +106,7 @@ fn search(filename: &str, search_word: &str) -> Result<Vec<u64>> {
     Ok(matches)
 }
 
-fn clear_status_line() -> Result<()> {
+fn clear_status_line() -> io::Result<()> {
     let (window_columns, window_rows) = terminal::size()?;
 
     let mut status_line = Vec::new();
@@ -130,7 +130,7 @@ fn render_status_line(
     max_line_count: usize,
     display_lines: &DisplayLines,
     search_result: &SearchResult,
-) -> Result<()> {
+) -> io::Result<()> {
     let (window_columns, window_rows) = terminal::size()?;
 
     let mut status_line = Vec::new();
@@ -165,7 +165,7 @@ fn render_status_line(
     Ok(())
 }
 
-fn less_loop(filename: &str) -> Result<()> {
+fn less_loop(filename: &str) -> io::Result<()> {
     let f = File::open(filename)?;
     let lines = ropey::Rope::from_reader(f)?;
     let line_count = lines.len_lines() - 1;
@@ -211,16 +211,14 @@ fn less_loop(filename: &str) -> Result<()> {
         if is_search_mode {
             match event {
                 Event::Key(KeyEvent {
-                    code: KeyCode::Esc,
-                    modifiers: _,
+                    code: KeyCode::Esc, ..
                 }) => {
                     is_search_mode = false;
                     execute!(stdout(), RestorePosition)?;
                     search_word_vec = Vec::new();
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Enter,
-                    modifiers: _,
+                    code: KeyCode::Enter, ..
                 }) => {
                     // set search word
                     if search_word_vec.len() <= 0 {
@@ -260,8 +258,7 @@ fn less_loop(filename: &str) -> Result<()> {
                     search_word_vec = Vec::new();
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char(c),
-                    modifiers: _,
+                    code: KeyCode::Char(c), ..
                 }) => {
                     search_word_vec.push(c);
                     execute!(stdout(), Print(c))?;
@@ -273,12 +270,10 @@ fn less_loop(filename: &str) -> Result<()> {
 
             match event {
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('h') | KeyCode::Left,
-                    modifiers: _,
+                    code: KeyCode::Char('h') | KeyCode::Left, ..
                 }) => execute!(stdout(), MoveLeft(1))?,
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('j') | KeyCode::Down,
-                    modifiers: _,
+                    code: KeyCode::Char('j') | KeyCode::Down, ..
                 }) => {
                     if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) == row
                         && line_count != (display_lines.end + 1) as usize
@@ -300,8 +295,7 @@ fn less_loop(filename: &str) -> Result<()> {
                     }
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('k') | KeyCode::Up,
-                    modifiers: _,
+                    code: KeyCode::Char('k') | KeyCode::Up, ..
                 }) => {
                     if 0 == row && display_lines.start > 0 {
                         *display_lines.start_mut() = display_lines.start - 1;
@@ -319,20 +313,20 @@ fn less_loop(filename: &str) -> Result<()> {
                     }
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('l') | KeyCode::Right,
-                    modifiers: _,
+                    code: KeyCode::Char('l') | KeyCode::Right, ..
                 }) => execute!(stdout(), MoveRight(1))?,
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('u'),
                     modifiers: KeyModifiers::CONTROL,
+                    ..
                 }) => execute!(stdout(), MoveUp(20))?,
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('d'),
                     modifiers: KeyModifiers::CONTROL,
+                    ..
                 }) => execute!(stdout(), MoveDown(20))?,
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('/'),
-                    modifiers: _,
+                    code: KeyCode::Char('/'), ..
                 }) => {
                     is_search_mode = true;
                     *display_lines.cursor_pos_mut() = row as u64;
@@ -344,8 +338,7 @@ fn less_loop(filename: &str) -> Result<()> {
                     )?;
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('n'),
-                    modifiers: _,
+                    code: KeyCode::Char('n'), ..
                 }) => {
                     // jump next search result
                     // let now_position = display_lines.start + row as u64;
@@ -380,8 +373,7 @@ fn less_loop(filename: &str) -> Result<()> {
                     };
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Esc,
-                    modifiers: _,
+                    code: KeyCode::Esc, ..
                 }) => break,
                 _ => (),
             };
@@ -391,7 +383,7 @@ fn less_loop(filename: &str) -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
+fn main() -> io::Result<()> {
     let opts: Opts = Opts::parse();
     let mut stdout = stdout();
 
