@@ -14,6 +14,7 @@ use crossterm::{
     terminal,
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, ScrollDown, ScrollUp},
 };
+use grep::matcher::Matcher;
 use grep::regex::RegexMatcher;
 use grep::searcher::sinks::UTF8;
 use grep::searcher::SearcherBuilder;
@@ -31,7 +32,7 @@ struct Opts {
 struct DisplayLines {
     start: u64,
     end: u64,
-    cursor_pos: u64, // use with is_search_mode
+    cursor_pos: (u64, u64), // use with is_search_mode, (row, col)
 }
 
 impl DisplayLines {
@@ -41,7 +42,7 @@ impl DisplayLines {
     fn end_mut(&mut self) -> &mut u64 {
         &mut self.end
     }
-    fn cursor_pos_mut(&mut self) -> &mut u64 {
+    fn cursor_pos_mut(&mut self) -> &mut (u64, u64) {
         &mut self.cursor_pos
     }
 }
@@ -49,7 +50,7 @@ impl DisplayLines {
 #[derive(Clone, Debug)]
 struct SearchResult {
     word: String,
-    lines: Vec<u64>,
+    lines: Vec<(u64, u64)>,  // (line number, position)
     now_idx: Option<usize>,
 }
 
@@ -57,13 +58,14 @@ impl SearchResult {
     fn word_mut(&mut self) -> &mut String {
         &mut self.word
     }
-    fn lines_mut(&mut self) -> &mut Vec<u64> {
+    fn lines_mut(&mut self) -> &mut Vec<(u64, u64)> {
         &mut self.lines
     }
-    fn get_near_line(&mut self, now_position: u64) -> Option<u64> {
+    fn get_near_line(&mut self, now_position: u64) -> Option<(u64, u64)> {
         let mut pos = None;
         for idx in 0..self.lines.clone().len() {
-            if now_position >= self.lines[idx] {
+            let (line_num, _) = self.lines[idx];
+            if now_position >= line_num {
                 pos = Some(self.lines[idx]);
                 self.now_idx = Some(idx);
                 break;
@@ -71,7 +73,7 @@ impl SearchResult {
         }
         pos
     }
-    fn next(&mut self) -> Option<u64> {
+    fn next(&mut self) -> Option<(u64, u64)> {
         let result_count = self.lines.len();
         match self.now_idx {
             Some(n) => {
@@ -91,15 +93,16 @@ impl SearchResult {
 const STATUS_LINE_OFFSET: usize = 2;
 const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
 
-fn search(filename: &str, search_word: &str) -> io::Result<Vec<u64>> {
+fn search(filename: &str, search_word: &str) -> io::Result<Vec<(u64, u64)>> {
     let matcher = RegexMatcher::new(search_word).unwrap();
-    let mut matches: Vec<u64> = vec![];
+    let mut matches: Vec<(u64, u64)> = vec![];
     let mut searcher = SearcherBuilder::new().build();
     searcher.search_path(
         &matcher,
         filename,
         UTF8(|lnum, _line| {
-            matches.push(lnum);
+            let linematch = matcher.find_at(_line.as_bytes(), 0).unwrap();
+            matches.push((lnum, linematch.unwrap().start() as u64));
             Ok(true)
         }),
     )?;
@@ -131,7 +134,7 @@ fn render_status_line(
     let status_line = vec![" ";window_columns as usize];
 
     let percentage = line_count as f64 / max_line_count as f64 * 100.;
-    let l = format!(
+    let _ = format!(
         "{}/{}({:3.0}%) search={}, {:?}, {:?}, {:?}",
         line_count,
         max_line_count,
@@ -149,7 +152,7 @@ fn render_status_line(
         SetBackgroundColor(Color::Blue),
         Print(String::from_iter(status_line)),
         MoveTo(0, window_rows - STATUS_LINE_OFFSET as u16),
-        Print(l),
+        // Print(l),  // debug
         ResetColor,
         RestorePosition,
     )?;
@@ -173,7 +176,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
     let mut display_lines = DisplayLines {
         start: 0,
         end: 0,
-        cursor_pos: 0,
+        cursor_pos: (0, 0),
     };
 
     for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
@@ -213,37 +216,39 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     code: KeyCode::Enter, ..
                 }) => {
                     // set search word
-                    if search_word_vec.is_empty() {
-                        continue;
-                    }
-                    *search_result.word_mut() = String::from_iter(search_word_vec.clone());
+                    let mut lcol = 0;
+                    if !search_word_vec.is_empty() {
+                        *search_result.word_mut() = String::from_iter(search_word_vec.clone());
 
-                    // get search result
-                    let result = search(filename, search_result.word.as_str())?;
-                    if !result.is_empty() {
-                        // set search result
-                        *search_result.lines_mut() = result;
+                        // get search result
+                        let result = search(filename, search_result.word.as_str())?;
+                        if !result.is_empty() {
+                            // set search result
+                            *search_result.lines_mut() = result;
 
-                        let now_position = display_lines.start + row as u64;
-                        if let Some(lnum) = search_result.get_near_line(now_position) {
-                            // jump to result line
-                            execute!(stdout(), RestorePosition, Clear(ClearType::All))?;
+                            let now_position = display_lines.start + row as u64;
+                            if let Some((lnum, _lcol)) = search_result.get_near_line(now_position) {
+                                lcol = _lcol;
+                                // jump to result line
+                                execute!(stdout(), RestorePosition, Clear(ClearType::All))?;
 
-                            for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
-                                let l = lines.line(lnum as usize + idx as usize - 1);
-                                execute!(stdout(), MoveTo(0, idx), Print(format!("{}", l)))?;
-                                if idx as usize >= line_count - 1 {
-                                    break;
+                                for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
+                                    let l = lines.line(lnum as usize + idx as usize - 1);
+                                    execute!(stdout(), MoveTo(0, idx), Print(format!("{}", l)))?;
+                                    if idx as usize >= line_count - 1 {
+                                        break;
+                                    }
                                 }
+                                *display_lines.start_mut() += lnum - 1;
+                                *display_lines.end_mut() += lnum - 1;
+                                execute!(stdout(), MoveTo(0, 0))?;
                             }
-                            *display_lines.start_mut() += lnum - 1;
-                            *display_lines.end_mut() += lnum - 1;
-                            execute!(stdout(), MoveTo(0, 0))?;
                         }
                     }
 
                     is_search_mode = false;
-                    execute!(stdout(), MoveTo(0, display_lines.cursor_pos as u16))?;
+                    execute!(stdout(), MoveTo(0, 0))?;
+                    execute!(stdout(), MoveTo(lcol as u16, display_lines.cursor_pos.0 as u16))?;
                     search_word_vec = Vec::new();
                 }
                 Event::Key(KeyEvent {
@@ -318,7 +323,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     code: KeyCode::Char('/'), ..
                 }) => {
                     is_search_mode = true;
-                    *display_lines.cursor_pos_mut() = row as u64;
+                    *display_lines.cursor_pos_mut() = (row as u64, 0);
                     execute!(
                         stdout(),
                         SavePosition,
@@ -332,7 +337,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     // jump next search result
                     // let now_position = display_lines.start + row as u64;
                     if search_result.now_idx.is_some() {
-                        if let Some(lnum) = search_result.next() {
+                        if let Some((lnum, lcol)) = search_result.next() {
                             // jump to result line
                             execute!(
                                 stdout(),
@@ -350,7 +355,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                             }
                             *display_lines.start_mut() += lnum - 1;
                             *display_lines.end_mut() += lnum - 1;
-                            execute!(stdout(), RestorePosition)?;
+                            execute!(stdout(), RestorePosition, MoveTo(0, 0), MoveTo(lcol as u16, 0))?;
                         };
                     };
                 }
