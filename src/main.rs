@@ -90,6 +90,7 @@ impl SearchResult {
     }
 }
 
+const DEBUG: bool = false;
 const STATUS_LINE_OFFSET: usize = 2;
 const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
 
@@ -127,6 +128,7 @@ fn clear_status_line() -> io::Result<()> {
 fn render_status_line(
     line_count: u64,
     max_line_count: usize,
+    col_num: u64,
     display_lines: &DisplayLines,
     search_result: &SearchResult,
 ) -> io::Result<()> {
@@ -134,7 +136,8 @@ fn render_status_line(
     let status_line = vec![" ";window_columns as usize];
 
     let percentage = line_count as f64 / max_line_count as f64 * 100.;
-    let _ = format!(
+    let l = if DEBUG {
+        format!(
         "{}/{}({:3.0}%) search={}, {:?}, {:?}, {:?}",
         line_count,
         max_line_count,
@@ -143,7 +146,17 @@ fn render_status_line(
         search_result.lines,
         search_result,
         display_lines
-    );
+    )
+    } else {
+        format!(
+            "{}/{}({:3.0}%)",
+            line_count,
+            max_line_count,
+            percentage as usize,
+        )
+    };
+
+    let right_pane_string = format!("{}:{}", line_count, col_num);
 
     execute!(
         stdout(),
@@ -152,7 +165,9 @@ fn render_status_line(
         SetBackgroundColor(Color::Blue),
         Print(String::from_iter(status_line)),
         MoveTo(0, window_rows - STATUS_LINE_OFFSET as u16),
-        // Print(l),  // debug
+        Print(l),
+        MoveTo(window_columns - right_pane_string.len() as u16, window_rows - STATUS_LINE_OFFSET as u16),
+        Print(right_pane_string),
         ResetColor,
         RestorePosition,
     )?;
@@ -190,11 +205,23 @@ fn less_loop(filename: &str) -> io::Result<()> {
     }
     execute!(stdout(), MoveTo(0, 0), SavePosition)?;
 
+    let mut shadow_cursor_pos_col = 0;
+
     loop {
-        let (_, row) = position()?;
+        let (cursor_pos_col, cursor_pos_row) = position()?;
+        let now_line_num = display_lines.start + 1 + cursor_pos_row as u64;
+        let now_line_idx = now_line_num as usize - 1;
+        let now_line = lines.line(now_line_idx);
+        let line_len = if let Some(v) = now_line.as_str() {
+            v.trim_end().len()
+        } else {
+            0
+        };
+
         let _ = render_status_line(
-            display_lines.start + 1 + row as u64,
+            now_line_num,
             line_count,
+            cursor_pos_col as u64 + 1,
             &display_lines,
             &search_result,
         );
@@ -226,11 +253,11 @@ fn less_loop(filename: &str) -> io::Result<()> {
                             // set search result
                             *search_result.lines_mut() = result;
 
-                            let now_position = display_lines.start + row as u64;
+                            let now_position = display_lines.start + cursor_pos_row as u64;
                             if let Some((lnum, _lcol)) = search_result.get_near_line(now_position) {
                                 lcol = _lcol;
                                 // jump to result line
-                                execute!(stdout(), RestorePosition, Clear(ClearType::All))?;
+                                // execute!(stdout(), RestorePosition, Clear(ClearType::All))?;
 
                                 for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
                                     let l = lines.line(lnum as usize + idx as usize - 1);
@@ -269,7 +296,8 @@ fn less_loop(filename: &str) -> io::Result<()> {
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('j') | KeyCode::Down, ..
                 }) => {
-                    if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) == row
+                    let mut col_diff = 0;
+                    if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) == cursor_pos_row
                         && line_count != (display_lines.end + 1) as usize
                     {
                         *display_lines.start_mut() = display_lines.start + 1;
@@ -282,16 +310,41 @@ fn less_loop(filename: &str) -> io::Result<()> {
                             Print(format!("{}", l)),
                             RestorePosition
                         )?;
-                    } else if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) != row
-                        && line_count != (row + 1) as usize
+
+                        let l_len = l.len_chars();
+                        if cursor_pos_col > l_len as u16 {
+                            col_diff = cursor_pos_col - l_len as u16;
+                        }
+                    } else if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) != cursor_pos_row
+                        && line_count != (cursor_pos_row + 1) as usize
                     {
                         execute!(stdout(), MoveDown(1))?;
+
+                        // reset cursor position when line length is shorter than cursor position
+                        let now_line = lines.line(now_line_idx + 1);
+                        let line_len = if let Some(v) = now_line.as_str() {
+                            v.trim_end().len()
+                        } else {
+                            0
+                        };
+                        // if shadow_cursor_pos_col != 0 && shadow_cursor_pos_col < line_len as u16 {
+                        //     execute!(stdout(), MoveRight(shadow_cursor_pos_col - cursor_pos_col))?;
+                        // }
+                        if cursor_pos_col > line_len as u16 {
+                            col_diff = cursor_pos_col - line_len as u16 + 1;
+                        }
+                    }
+
+                    if col_diff > 0 {
+                        shadow_cursor_pos_col = cursor_pos_col;
+                        execute!(stdout(), MoveLeft(col_diff))?;
                     }
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('k') | KeyCode::Up, ..
                 }) => {
-                    if 0 == row && display_lines.start > 0 {
+                    let mut col_diff = 0;
+                    if 0 == cursor_pos_row && display_lines.start > 0 {
                         *display_lines.start_mut() = display_lines.start - 1;
                         *display_lines.end_mut() = display_lines.end - 1;
                         let l = lines.line(display_lines.start as usize);
@@ -302,13 +355,30 @@ fn less_loop(filename: &str) -> io::Result<()> {
                             Print(format!("{}", l)),
                             RestorePosition
                         )?;
-                    } else if 0 != row {
+                        let l = lines.line(display_lines.start as usize);
+                        let l_len = l.len_chars();
+                        if cursor_pos_col > l_len as u16 {
+                            col_diff = cursor_pos_col - l_len as u16;
+                        }
+                    } else if 0 != cursor_pos_row {
                         execute!(stdout(), MoveUp(1))?;
+                        let line_len = lines.line(now_line_idx - 1).len_chars();
+                        if cursor_pos_col > line_len as u16 {
+                            col_diff = line_len as u16 - cursor_pos_col;
+                        }
+                    }
+
+                    if col_diff > 0 {
+                        execute!(stdout(), MoveLeft(col_diff))?;
                     }
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('l') | KeyCode::Right, ..
-                }) => execute!(stdout(), MoveRight(1))?,
+                }) => {
+                    if line_len as u16 - 1 > cursor_pos_col {
+                        execute!(stdout(), MoveRight(1))?
+                    }
+                },
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('u'),
                     modifiers: KeyModifiers::CONTROL,
@@ -323,7 +393,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     code: KeyCode::Char('/'), ..
                 }) => {
                     is_search_mode = true;
-                    *display_lines.cursor_pos_mut() = (row as u64, 0);
+                    *display_lines.cursor_pos_mut() = (cursor_pos_row as u64, 0);
                     execute!(
                         stdout(),
                         SavePosition,
@@ -335,7 +405,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     code: KeyCode::Char('n'), ..
                 }) => {
                     // jump next search result
-                    // let now_position = display_lines.start + row as u64;
+                    // let now_position = display_lines.start + cursor_pos_row as u64;
                     if search_result.now_idx.is_some() {
                         if let Some((lnum, lcol)) = search_result.next() {
                             // jump to result line
