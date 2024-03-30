@@ -19,6 +19,8 @@ use grep::regex::RegexMatcher;
 use grep::searcher::sinks::UTF8;
 use grep::searcher::SearcherBuilder;
 
+mod utils;
+
 #[derive(Parser)]
 #[clap(
     version = env!("CARGO_PKG_VERSION"),
@@ -322,16 +324,13 @@ fn less_loop(filename: &str) -> io::Result<()> {
 
                         // reset cursor position when line length is shorter than cursor position
                         let now_line = lines.line(now_line_idx + 1);
-                        let line_len = if let Some(v) = now_line.as_str() {
-                            v.trim_end().len()
-                        } else {
-                            0
-                        };
+                        let mut line_len = utils::line::get_stripped_line_length(now_line);
                         // if shadow_cursor_pos_col != 0 && shadow_cursor_pos_col < line_len as u16 {
                         //     execute!(stdout(), MoveRight(shadow_cursor_pos_col - cursor_pos_col))?;
                         // }
+                        line_len = line_len.saturating_sub(1);
                         if cursor_pos_col > line_len as u16 {
-                            col_diff = cursor_pos_col - line_len as u16 + 1;
+                            col_diff = cursor_pos_col - line_len as u16;
                         }
                     }
 
@@ -357,14 +356,18 @@ fn less_loop(filename: &str) -> io::Result<()> {
                         )?;
                         let l = lines.line(display_lines.start as usize);
                         let l_len = l.len_chars();
-                        if cursor_pos_col > l_len as u16 {
-                            col_diff = cursor_pos_col - l_len as u16;
+                        if cursor_pos_col > l_len as u16 - 1 {
+                            col_diff = cursor_pos_col - l_len as u16 + 1;
                         }
                     } else if 0 != cursor_pos_row {
                         execute!(stdout(), MoveUp(1))?;
-                        let line_len = lines.line(now_line_idx - 1).len_chars();
+
+                        // reset cursor position when line length is shorter than cursor position
+                        let now_line = lines.line(now_line_idx - 1);
+                        let mut line_len = utils::line::get_stripped_line_length(now_line);
+                        line_len = line_len.saturating_sub(1);
                         if cursor_pos_col > line_len as u16 {
-                            col_diff = line_len as u16 - cursor_pos_col;
+                            col_diff = cursor_pos_col - line_len as u16;
                         }
                     }
 
