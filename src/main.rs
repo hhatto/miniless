@@ -90,6 +90,11 @@ impl SearchResult {
             None => None,
         }
     }
+    fn reset(&mut self) {
+        self.word = String::new();
+        self.lines = Vec::new();
+        self.now_idx = None;
+    }
 }
 
 const DEBUG: bool = false;
@@ -171,6 +176,41 @@ fn render_status_line(
         MoveTo(window_columns - right_pane_string.len() as u16, window_rows - STATUS_LINE_OFFSET as u16),
         Print(right_pane_string),
         ResetColor,
+        RestorePosition,
+    )?;
+
+    Ok(())
+}
+
+fn clear_search_line() -> io::Result<()> {
+    let (window_columns, window_rows) = terminal::size()?;
+    let empty_line = vec![" ";window_columns as usize];
+
+    execute!(
+        stdout(),
+        SavePosition,
+        MoveTo(0, window_rows - STATUS_LINE_OFFSET as u16 + 1),
+        Print(String::from_iter(empty_line)),
+        RestorePosition,
+    )?;
+
+    Ok(())
+}
+
+fn render_search_line(
+    search_result: &SearchResult,
+) -> io::Result<()> {
+    let (_, window_rows) = terminal::size()?;
+    let render_string = if search_result.word.is_empty() {
+        String::from("")
+    } else {
+        format!("/{}", search_result.word)
+    };
+    execute!(
+        stdout(),
+        SavePosition,
+        MoveTo(0, window_rows - STATUS_LINE_OFFSET as u16 + 1),
+        Print(render_string),
         RestorePosition,
     )?;
 
@@ -273,6 +313,9 @@ fn less_loop(filename: &str) -> io::Result<()> {
                                 execute!(stdout(), MoveTo(0, 0))?;
                             }
                         }
+                    } else {
+                        search_result.reset();
+                        clear_search_line()?;
                     }
 
                     is_search_mode = false;
@@ -289,6 +332,8 @@ fn less_loop(filename: &str) -> io::Result<()> {
                 _ => (),
             };
         } else {
+            let _ = render_search_line(&search_result);
+
             execute!(stdout(), SavePosition)?;
 
             match event {
@@ -408,6 +453,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                 }) => {
                     is_search_mode = true;
                     *display_lines.cursor_pos_mut() = (cursor_pos_row as u64, 0);
+                    clear_search_line()?;
                     execute!(
                         stdout(),
                         SavePosition,
