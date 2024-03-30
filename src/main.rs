@@ -207,7 +207,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
     }
     execute!(stdout(), MoveTo(0, 0), SavePosition)?;
 
-    let mut shadow_cursor_pos_col = 0;
+    // let mut shadow_cursor_pos_col = 0;
 
     loop {
         let (cursor_pos_col, cursor_pos_row) = position()?;
@@ -299,6 +299,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     code: KeyCode::Char('j') | KeyCode::Down, ..
                 }) => {
                     let mut col_diff = 0;
+
                     if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) == cursor_pos_row
                         && line_count != (display_lines.end + 1) as usize
                     {
@@ -309,13 +310,18 @@ fn less_loop(filename: &str) -> io::Result<()> {
                         execute!(
                             stdout(),
                             ScrollUp(1),
+                            SavePosition,
+                            MoveLeft(cursor_pos_col),
                             Print(format!("{}", l)),
                             RestorePosition
                         )?;
 
-                        let l_len = l.len_chars();
-                        if cursor_pos_col > l_len as u16 {
-                            col_diff = cursor_pos_col - l_len as u16;
+                        // TODO: last line
+                        let now_line = lines.line(now_line_idx + 1);
+                        let mut line_len = utils::line::get_stripped_line_length(now_line);
+                        line_len = line_len.saturating_sub(1);
+                        if cursor_pos_col > line_len as u16 {
+                            col_diff = cursor_pos_col - line_len as u16;
                         }
                     } else if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) != cursor_pos_row
                         && line_count != (cursor_pos_row + 1) as usize
@@ -335,7 +341,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     }
 
                     if col_diff > 0 {
-                        shadow_cursor_pos_col = cursor_pos_col;
+                        // shadow_cursor_pos_col = cursor_pos_col;
                         execute!(stdout(), MoveLeft(col_diff))?;
                     }
                 }
@@ -351,13 +357,18 @@ fn less_loop(filename: &str) -> io::Result<()> {
                         execute!(
                             stdout(),
                             ScrollDown(1),
+                            SavePosition,
+                            MoveLeft(cursor_pos_col),
                             Print(format!("{}", l)),
                             RestorePosition
                         )?;
-                        let l = lines.line(display_lines.start as usize);
-                        let l_len = l.len_chars();
-                        if cursor_pos_col > l_len as u16 - 1 {
-                            col_diff = cursor_pos_col - l_len as u16 + 1;
+
+                        // TODO: first line
+                        let now_line = lines.line(now_line_idx - 1);
+                        let mut line_len = utils::line::get_stripped_line_length(now_line);
+                        line_len = line_len.saturating_sub(1);
+                        if cursor_pos_col > line_len as u16 {
+                            col_diff = cursor_pos_col - line_len as u16;
                         }
                     } else if 0 != cursor_pos_row {
                         execute!(stdout(), MoveUp(1))?;
