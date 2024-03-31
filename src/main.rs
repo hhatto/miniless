@@ -50,15 +50,20 @@ impl DisplayLines {
 }
 
 #[derive(Clone, Debug)]
-struct SearchResult {
+struct SearchResult<'a> {
+    filename: &'a str,
     word: String,
+    word_vec: Vec<char>,  // input temporary search word
     lines: Vec<(u64, u64)>,  // (line number, position)
     now_idx: Option<usize>,
 }
 
-impl SearchResult {
+impl SearchResult<'_> {
     fn word_mut(&mut self) -> &mut String {
         &mut self.word
+    }
+    fn word_vec_mut(&mut self) -> &mut Vec<char> {
+        &mut self.word_vec
     }
     fn lines_mut(&mut self) -> &mut Vec<(u64, u64)> {
         &mut self.lines
@@ -67,7 +72,7 @@ impl SearchResult {
         let mut pos = None;
         for idx in 0..self.lines.clone().len() {
             let (line_num, _) = self.lines[idx];
-            if now_position >= line_num {
+            if line_num >= now_position {
                 pos = Some(self.lines[idx]);
                 self.now_idx = Some(idx);
                 break;
@@ -92,6 +97,7 @@ impl SearchResult {
     }
     fn reset(&mut self) {
         self.word = String::new();
+        self.word_vec = Vec::new();
         self.lines = Vec::new();
         self.now_idx = None;
     }
@@ -217,6 +223,87 @@ fn render_search_line(
     Ok(())
 }
 
+fn handler_search_word_input_mode(
+    display_lines: &mut DisplayLines,
+    window_rows: u16,
+    lines: &ropey::Rope,
+    event: &Event,
+    is_search_word_input_mode: bool,
+    search_result: &mut SearchResult,
+) -> io::Result<bool> {
+    let line_count = lines.len_lines() - 1;
+    let mut return_search_word_input_mode = is_search_word_input_mode;
+    match event {
+        Event::Key(KeyEvent {
+            code: KeyCode::Esc, ..
+        }) => {
+            return_search_word_input_mode = false;
+            execute!(stdout(), RestorePosition)?;
+            *search_result.word_vec_mut() = Vec::new();
+        }
+        Event::Key(KeyEvent {
+            code: KeyCode::Delete | KeyCode::Backspace, ..
+        }) => {
+            if !search_result.word_vec.is_empty() {
+                search_result.word_vec.pop();
+                execute!(stdout(), MoveLeft(1), terminal::Clear(ClearType::FromCursorDown))?;
+            }
+        }
+        Event::Key(KeyEvent {
+            code: KeyCode::Enter, ..
+        }) => {
+            let word_vec = search_result.word_vec.clone();
+            search_result.reset();
+
+            // set search word
+            let mut lcol = display_lines.cursor_pos.1;
+            if !word_vec.is_empty() {
+                *search_result.word_mut() = String::from_iter(word_vec.clone());
+
+                // get search result
+                let result = search(search_result.filename, search_result.word.as_str())?;
+                if !result.is_empty() {
+                    // set search result
+                    *search_result.lines_mut() = result;
+
+                    let now_position = display_lines.start + display_lines.cursor_pos.0;
+                    if let Some((lnum, _lcol)) = search_result.get_near_line(now_position) {
+                        lcol = _lcol;
+                        // jump to result line
+                        // execute!(stdout(), RestorePosition, Clear(ClearType::All))?;
+
+                        for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
+                            let l = lines.line(lnum as usize + idx as usize - 1);
+                            execute!(stdout(), MoveTo(0, idx), Print(format!("{}", l)))?;
+                            if idx as usize >= line_count - 1 {
+                                break;
+                            }
+                        }
+                        *display_lines.start_mut() += lnum - 1;
+                        *display_lines.end_mut() += lnum - 1;
+                        execute!(stdout(), MoveTo(0, 0))?;
+                    }
+                }
+            } else {
+                clear_search_line()?;
+            }
+
+            return_search_word_input_mode = false;
+            execute!(stdout(), MoveTo(0, 0))?;
+            execute!(stdout(), MoveTo(lcol as u16, display_lines.cursor_pos.0 as u16))?;
+            *search_result.word_vec_mut() = Vec::new();
+        }
+        Event::Key(KeyEvent {
+            code: KeyCode::Char(c), ..
+        }) => {
+            search_result.word_vec.push(*c);
+            execute!(stdout(), Print(c))?;
+        }
+        _ => (),
+    };
+    Ok(return_search_word_input_mode)
+}
+
 fn less_loop(filename: &str) -> io::Result<()> {
     let f = File::open(filename)?;
     let lines = ropey::Rope::from_reader(f)?;
@@ -224,11 +311,12 @@ fn less_loop(filename: &str) -> io::Result<()> {
     let mut is_search_word_input_mode = false;
 
     let mut search_result = SearchResult {
+        filename,
         word: String::new(),
+        word_vec: Vec::new(),
         lines: Vec::new(),
         now_idx: None,
     };
-    let mut search_word_vec: Vec<char> = [].to_vec();
     let (_, window_rows) = terminal::size()?;
     let mut display_lines = DisplayLines {
         start: 0,
@@ -273,74 +361,14 @@ fn less_loop(filename: &str) -> io::Result<()> {
         let _ = clear_status_line();
 
         if is_search_word_input_mode {
-            match event {
-                Event::Key(KeyEvent {
-                    code: KeyCode::Esc, ..
-                }) => {
-                    is_search_word_input_mode = false;
-                    execute!(stdout(), RestorePosition)?;
-                    search_word_vec = Vec::new();
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Delete | KeyCode::Backspace, ..
-                }) => {
-                    if search_word_vec.is_empty() {
-                        continue;
-                    }
-                    search_word_vec.pop();
-                    execute!(stdout(), MoveLeft(1), terminal::Clear(ClearType::FromCursorDown))?;
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Enter, ..
-                }) => {
-                    search_result.reset();
-
-                    // set search word
-                    let mut lcol = display_lines.cursor_pos.1;
-                    if !search_word_vec.is_empty() {
-                        *search_result.word_mut() = String::from_iter(search_word_vec.clone());
-
-                        // get search result
-                        let result = search(filename, search_result.word.as_str())?;
-                        if !result.is_empty() {
-                            // set search result
-                            *search_result.lines_mut() = result;
-
-                            let now_position = display_lines.start + cursor_pos_row as u64;
-                            if let Some((lnum, _lcol)) = search_result.get_near_line(now_position) {
-                                lcol = _lcol;
-                                // jump to result line
-                                // execute!(stdout(), RestorePosition, Clear(ClearType::All))?;
-
-                                for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
-                                    let l = lines.line(lnum as usize + idx as usize - 1);
-                                    execute!(stdout(), MoveTo(0, idx), Print(format!("{}", l)))?;
-                                    if idx as usize >= line_count - 1 {
-                                        break;
-                                    }
-                                }
-                                *display_lines.start_mut() += lnum - 1;
-                                *display_lines.end_mut() += lnum - 1;
-                                execute!(stdout(), MoveTo(0, 0))?;
-                            }
-                        }
-                    } else {
-                        clear_search_line()?;
-                    }
-
-                    is_search_word_input_mode = false;
-                    execute!(stdout(), MoveTo(0, 0))?;
-                    execute!(stdout(), MoveTo(lcol as u16, display_lines.cursor_pos.0 as u16))?;
-                    search_word_vec = Vec::new();
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char(c), ..
-                }) => {
-                    search_word_vec.push(c);
-                    execute!(stdout(), Print(c))?;
-                }
-                _ => (),
-            };
+            is_search_word_input_mode = handler_search_word_input_mode(
+                &mut display_lines,
+                window_rows,
+                &lines,
+                &event,
+                is_search_word_input_mode,
+                &mut search_result,
+            )?;
         } else {
             let _ = render_search_line(&search_result);
 
@@ -493,8 +521,8 @@ fn less_loop(filename: &str) -> io::Result<()> {
                                     break;
                                 }
                             }
-                            *display_lines.start_mut() += lnum - 1;
-                            *display_lines.end_mut() += lnum - 1;
+                            *display_lines.start_mut() = lnum - 1;
+                            *display_lines.end_mut() = lnum - 1;
                             execute!(stdout(), RestorePosition, MoveTo(0, 0), MoveTo(lcol as u16, 0))?;
                         };
                     };
