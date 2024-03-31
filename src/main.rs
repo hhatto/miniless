@@ -282,10 +282,21 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     search_word_vec = Vec::new();
                 }
                 Event::Key(KeyEvent {
+                    code: KeyCode::Delete | KeyCode::Backspace, ..
+                }) => {
+                    if search_word_vec.is_empty() {
+                        continue;
+                    }
+                    search_word_vec.pop();
+                    execute!(stdout(), MoveLeft(1), terminal::Clear(ClearType::FromCursorDown))?;
+                }
+                Event::Key(KeyEvent {
                     code: KeyCode::Enter, ..
                 }) => {
+                    search_result.reset();
+
                     // set search word
-                    let mut lcol = 0;
+                    let mut lcol = display_lines.cursor_pos.1;
                     if !search_word_vec.is_empty() {
                         *search_result.word_mut() = String::from_iter(search_word_vec.clone());
 
@@ -314,7 +325,6 @@ fn less_loop(filename: &str) -> io::Result<()> {
                             }
                         }
                     } else {
-                        search_result.reset();
                         clear_search_line()?;
                     }
 
@@ -452,7 +462,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     code: KeyCode::Char('/'), ..
                 }) => {
                     is_search_mode = true;
-                    *display_lines.cursor_pos_mut() = (cursor_pos_row as u64, 0);
+                    *display_lines.cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64);
                     clear_search_line()?;
                     execute!(
                         stdout(),
