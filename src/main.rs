@@ -34,7 +34,7 @@ struct Opts {
 struct DisplayLines {
     start: u64,
     end: u64,
-    cursor_pos: (u64, u64), // use with is_search_mode, (row, col)
+    cursor_pos: (u64, u64), // use with is_search_word_input_mode, (row, col)
 }
 
 impl DisplayLines {
@@ -221,7 +221,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
     let f = File::open(filename)?;
     let lines = ropey::Rope::from_reader(f)?;
     let line_count = lines.len_lines() - 1;
-    let mut is_search_mode = false;
+    let mut is_search_word_input_mode = false;
 
     let mut search_result = SearchResult {
         word: String::new(),
@@ -272,12 +272,12 @@ fn less_loop(filename: &str) -> io::Result<()> {
 
         let _ = clear_status_line();
 
-        if is_search_mode {
+        if is_search_word_input_mode {
             match event {
                 Event::Key(KeyEvent {
                     code: KeyCode::Esc, ..
                 }) => {
-                    is_search_mode = false;
+                    is_search_word_input_mode = false;
                     execute!(stdout(), RestorePosition)?;
                     search_word_vec = Vec::new();
                 }
@@ -328,7 +328,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                         clear_search_line()?;
                     }
 
-                    is_search_mode = false;
+                    is_search_word_input_mode = false;
                     execute!(stdout(), MoveTo(0, 0))?;
                     execute!(stdout(), MoveTo(lcol as u16, display_lines.cursor_pos.0 as u16))?;
                     search_word_vec = Vec::new();
@@ -461,7 +461,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('/'), ..
                 }) => {
-                    is_search_mode = true;
+                    is_search_word_input_mode = true;
                     *display_lines.cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64);
                     clear_search_line()?;
                     execute!(
