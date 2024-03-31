@@ -498,6 +498,8 @@ fn less_loop(filename: &str) -> io::Result<()> {
                             execute!(stdout(), RestorePosition, MoveTo(0, 0), MoveTo(lcol as u16, 0))?;
                         };
                     };
+
+                    // TODO: render search line
                 }
                 Event::Key(KeyEvent {
                     code: KeyCode::Esc, ..
