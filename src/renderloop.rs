@@ -15,7 +15,7 @@ use crate::search;
 use crate::search::SearchResult;
 use crate::utils;
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 const STATUS_LINE_OFFSET: usize = 2;
 const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
 
@@ -130,6 +130,20 @@ fn render_search_line(search_result: &SearchResult) -> io::Result<()> {
     Ok(())
 }
 
+fn re_render_display_lines(lines: &ropey::Rope, start_line_num: usize, window_rows: u16) -> io::Result<()> {
+    let line_count = lines.len_lines() - 1;
+
+    for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
+        let l = lines.line(start_line_num + idx as usize - 1);
+        execute!(stdout(), MoveTo(0, idx), Print(l))?;
+        if idx as usize >= line_count - 1 {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
 fn handler_search_word_input_mode(
     display_lines: &mut DisplayLines,
     window_rows: u16,
@@ -138,7 +152,6 @@ fn handler_search_word_input_mode(
     is_search_word_input_mode: bool,
     search_result: &mut SearchResult,
 ) -> io::Result<bool> {
-    let line_count = lines.len_lines() - 1;
     let mut return_search_word_input_mode = is_search_word_input_mode;
     match event {
         Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => {
@@ -176,17 +189,12 @@ fn handler_search_word_input_mode(
                     if let Some((lnum, _lcol)) = search_result.get_near_line(now_position) {
                         lcol = _lcol;
                         // jump to result line
-                        // execute!(stdout(), RestorePosition, Clear(ClearType::All))?;
+                        execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
 
-                        for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
-                            let l = lines.line(lnum as usize + idx as usize - 1);
-                            execute!(stdout(), MoveTo(0, idx), Print(format!("{}", l)))?;
-                            if idx as usize >= line_count - 1 {
-                                break;
-                            }
-                        }
-                        *display_lines.start_mut() += lnum - 1;
-                        *display_lines.end_mut() += lnum - 1;
+                        re_render_display_lines(lines, lnum as usize, window_rows)?;
+
+                        *display_lines.start_mut() = lnum - 1;
+                        *display_lines.end_mut() = lnum - 1;
                         execute!(stdout(), MoveTo(0, 0))?;
                     }
                 }
@@ -404,13 +412,8 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
                             // jump to result line
                             execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
 
-                            for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
-                                let l = lines.line(lnum as usize + idx as usize - 1);
-                                execute!(stdout(), MoveTo(0, idx), Print(l))?;
-                                if idx as usize >= line_count - 1 {
-                                    break;
-                                }
-                            }
+                            re_render_display_lines(&lines, lnum as usize, window_rows)?;
+
                             *display_lines.start_mut() = lnum - 1;
                             *display_lines.end_mut() = lnum - 1;
                             execute!(stdout(), RestorePosition, MoveTo(0, 0), MoveTo(lcol as u16, 0))?;
