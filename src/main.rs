@@ -14,12 +14,11 @@ use crossterm::{
     terminal,
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, ScrollDown, ScrollUp},
 };
-use grep::matcher::Matcher;
-use grep::regex::RegexMatcher;
-use grep::searcher::sinks::UTF8;
-use grep::searcher::SearcherBuilder;
 
 mod utils;
+mod search;
+
+use crate::search::SearchResult;
 
 #[derive(Parser)]
 #[clap(
@@ -49,79 +48,10 @@ impl DisplayLines {
     }
 }
 
-#[derive(Clone, Debug)]
-struct SearchResult<'a> {
-    filename: &'a str,
-    word: String,
-    word_vec: Vec<char>,  // input temporary search word
-    lines: Vec<(u64, u64)>,  // (line number, position)
-    now_idx: Option<usize>,
-}
-
-impl SearchResult<'_> {
-    fn word_mut(&mut self) -> &mut String {
-        &mut self.word
-    }
-    fn word_vec_mut(&mut self) -> &mut Vec<char> {
-        &mut self.word_vec
-    }
-    fn lines_mut(&mut self) -> &mut Vec<(u64, u64)> {
-        &mut self.lines
-    }
-    fn get_near_line(&mut self, now_position: u64) -> Option<(u64, u64)> {
-        let mut pos = None;
-        for idx in 0..self.lines.clone().len() {
-            let (line_num, _) = self.lines[idx];
-            if line_num >= now_position {
-                pos = Some(self.lines[idx]);
-                self.now_idx = Some(idx);
-                break;
-            }
-        }
-        pos
-    }
-    fn next(&mut self) -> Option<(u64, u64)> {
-        let result_count = self.lines.len();
-        match self.now_idx {
-            Some(n) => {
-                if result_count > 0 {
-                    let update_n = if result_count > (n + 1) { n + 1 } else { 0 };
-                    self.now_idx = Some(update_n);
-                    Some(self.lines[update_n])
-                } else {
-                    None
-                }
-            }
-            None => None,
-        }
-    }
-    fn reset(&mut self) {
-        self.word = String::new();
-        self.word_vec = Vec::new();
-        self.lines = Vec::new();
-        self.now_idx = None;
-    }
-}
 
 const DEBUG: bool = false;
 const STATUS_LINE_OFFSET: usize = 2;
 const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
-
-fn search(filename: &str, search_word: &str) -> io::Result<Vec<(u64, u64)>> {
-    let matcher = RegexMatcher::new(search_word).unwrap();
-    let mut matches: Vec<(u64, u64)> = vec![];
-    let mut searcher = SearcherBuilder::new().build();
-    searcher.search_path(
-        &matcher,
-        filename,
-        UTF8(|lnum, _line| {
-            let linematch = matcher.find_at(_line.as_bytes(), 0).unwrap();
-            matches.push((lnum, linematch.unwrap().start() as u64));
-            Ok(true)
-        }),
-    )?;
-    Ok(matches)
-}
 
 fn clear_status_line() -> io::Result<()> {
     let (window_columns, window_rows) = terminal::size()?;
@@ -261,7 +191,7 @@ fn handler_search_word_input_mode(
                 *search_result.word_mut() = String::from_iter(word_vec.clone());
 
                 // get search result
-                let result = search(search_result.filename, search_result.word.as_str())?;
+                let result = search::search(search_result.filename, search_result.word.as_str())?;
                 if !result.is_empty() {
                     // set search result
                     *search_result.lines_mut() = result;
@@ -310,13 +240,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
     let line_count = lines.len_lines() - 1;
     let mut is_search_word_input_mode = false;
 
-    let mut search_result = SearchResult {
-        filename,
-        word: String::new(),
-        word_vec: Vec::new(),
-        lines: Vec::new(),
-        now_idx: None,
-    };
+    let mut search_result = SearchResult::new(filename);
     let (_, window_rows) = terminal::size()?;
     let mut display_lines = DisplayLines {
         start: 0,
@@ -504,7 +428,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
                 }) => {
                     // jump next search result
                     // let now_position = display_lines.start + cursor_pos_row as u64;
-                    if search_result.now_idx.is_some() {
+                    if search_result.clone().exists_match() {
                         if let Some((lnum, lcol)) = search_result.next() {
                             // jump to result line
                             execute!(
