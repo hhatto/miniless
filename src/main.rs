@@ -20,6 +20,10 @@ mod search;
 
 use crate::search::SearchResult;
 
+const DEBUG: bool = false;
+const STATUS_LINE_OFFSET: usize = 2;
+const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
+
 #[derive(Parser)]
 #[clap(
     version = env!("CARGO_PKG_VERSION"),
@@ -47,11 +51,6 @@ impl DisplayLines {
         &mut self.cursor_pos
     }
 }
-
-
-const DEBUG: bool = false;
-const STATUS_LINE_OFFSET: usize = 2;
-const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
 
 fn clear_status_line() -> io::Result<()> {
     let (window_columns, window_rows) = terminal::size()?;
