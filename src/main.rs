@@ -1,13 +1,10 @@
 use std::fs::File;
-use std::io::stdout;
 use std::io;
+use std::io::stdout;
 
 use clap::Parser;
 use crossterm::{
-    cursor::{
-        position, DisableBlinking, MoveDown, MoveLeft, MoveRight, MoveTo, MoveUp, RestorePosition,
-        SavePosition,
-    },
+    cursor::{position, DisableBlinking, MoveDown, MoveLeft, MoveRight, MoveTo, MoveUp, RestorePosition, SavePosition},
     event::{read, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     style::{Color, Print, ResetColor, SetBackgroundColor},
@@ -15,8 +12,8 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType, ScrollDown, ScrollUp},
 };
 
-mod utils;
 mod search;
+mod utils;
 
 use crate::search::SearchResult;
 
@@ -54,7 +51,7 @@ impl DisplayLines {
 
 fn clear_status_line() -> io::Result<()> {
     let (window_columns, window_rows) = terminal::size()?;
-    let status_line = vec![" ";window_columns as usize];
+    let status_line = vec![" "; window_columns as usize];
 
     execute!(
         stdout(),
@@ -75,7 +72,7 @@ fn render_status_line(
     search_result: &SearchResult,
 ) -> io::Result<()> {
     let (window_columns, window_rows) = terminal::size()?;
-    let status_line = vec![" ";window_columns as usize];
+    let status_line = vec![" "; window_columns as usize];
 
     let percentage = line_count as f64 / max_line_count as f64 * 100.;
     let l = if DEBUG {
@@ -96,6 +93,8 @@ fn render_status_line(
             max_line_count,
             percentage as usize,
         )
+    } else {
+        format!("{}/{}({:3.0}%)", line_count, max_line_count, percentage as usize)
     };
 
     let right_pane_string = format!("{}:{}", line_count, col_num);
@@ -119,7 +118,7 @@ fn render_status_line(
 
 fn clear_search_line() -> io::Result<()> {
     let (window_columns, window_rows) = terminal::size()?;
-    let empty_line = vec![" ";window_columns as usize];
+    let empty_line = vec![" "; window_columns as usize];
 
     execute!(
         stdout(),
@@ -132,9 +131,7 @@ fn clear_search_line() -> io::Result<()> {
     Ok(())
 }
 
-fn render_search_line(
-    search_result: &SearchResult,
-) -> io::Result<()> {
+fn render_search_line(search_result: &SearchResult) -> io::Result<()> {
     let (_, window_rows) = terminal::size()?;
     let render_string = if search_result.word.is_empty() {
         String::from("")
@@ -163,15 +160,14 @@ fn handler_search_word_input_mode(
     let line_count = lines.len_lines() - 1;
     let mut return_search_word_input_mode = is_search_word_input_mode;
     match event {
-        Event::Key(KeyEvent {
-            code: KeyCode::Esc, ..
-        }) => {
+        Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => {
             return_search_word_input_mode = false;
             execute!(stdout(), RestorePosition)?;
             *search_result.word_vec_mut() = Vec::new();
         }
         Event::Key(KeyEvent {
-            code: KeyCode::Delete | KeyCode::Backspace, ..
+            code: KeyCode::Delete | KeyCode::Backspace,
+            ..
         }) => {
             if !search_result.word_vec.is_empty() {
                 search_result.word_vec.pop();
@@ -271,13 +267,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
             0
         };
 
-        let _ = render_status_line(
-            now_line_num,
-            line_count,
-            cursor_pos_col as u64 + 1,
-            &display_lines,
-            &search_result,
-        );
+        let _ = render_status_line(now_line_num, line_count, cursor_pos_col as u64 + 1, &display_lines, &search_result);
 
         let event = read()?;
 
@@ -299,10 +289,12 @@ fn less_loop(filename: &str) -> io::Result<()> {
 
             match event {
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('h') | KeyCode::Left, ..
+                    code: KeyCode::Char('h') | KeyCode::Left,
+                    ..
                 }) => execute!(stdout(), MoveLeft(1))?,
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('j') | KeyCode::Down, ..
+                    code: KeyCode::Char('j') | KeyCode::Down,
+                    ..
                 }) => {
                     let mut col_diff = 0;
 
@@ -352,7 +344,8 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     }
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('k') | KeyCode::Up, ..
+                    code: KeyCode::Char('k') | KeyCode::Up,
+                    ..
                 }) => {
                     let mut col_diff = 0;
                     if 0 == cursor_pos_row && display_lines.start > 0 {
@@ -393,12 +386,13 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     }
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('l') | KeyCode::Right, ..
+                    code: KeyCode::Char('l') | KeyCode::Right,
+                    ..
                 }) => {
                     if line_len as u16 - 1 > cursor_pos_col {
                         execute!(stdout(), MoveRight(1))?
                     }
-                },
+                }
                 Event::Key(KeyEvent {
                     code: KeyCode::Char('u'),
                     modifiers: KeyModifiers::CONTROL,
@@ -410,32 +404,24 @@ fn less_loop(filename: &str) -> io::Result<()> {
                     ..
                 }) => execute!(stdout(), MoveDown(20))?,
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('/'), ..
+                    code: KeyCode::Char('/'),
+                    ..
                 }) => {
                     is_search_word_input_mode = true;
                     *display_lines.cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64);
                     clear_search_line()?;
-                    execute!(
-                        stdout(),
-                        SavePosition,
-                        MoveTo(0, window_rows + 1),
-                        Print("/"),
-                    )?;
+                    execute!(stdout(), SavePosition, MoveTo(0, window_rows + 1), Print("/"))?;
                 }
                 Event::Key(KeyEvent {
-                    code: KeyCode::Char('n'), ..
+                    code: KeyCode::Char('n'),
+                    ..
                 }) => {
                     // jump next search result
                     // let now_position = display_lines.start + cursor_pos_row as u64;
                     if search_result.clone().exists_match() {
                         if let Some((lnum, lcol)) = search_result.next() {
                             // jump to result line
-                            execute!(
-                                stdout(),
-                                RestorePosition,
-                                SavePosition,
-                                Clear(ClearType::All)
-                            )?;
+                            execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
 
                             for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
                                 let l = lines.line(lnum as usize + idx as usize - 1);
@@ -452,9 +438,7 @@ fn less_loop(filename: &str) -> io::Result<()> {
 
                     // TODO: render search line
                 }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Esc, ..
-                }) => break,
+                Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => break,
                 _ => (),
             };
         }
@@ -471,7 +455,7 @@ fn main() -> io::Result<()> {
 
     execute!(stdout, Clear(ClearType::All))?;
 
-    execute!(stdout, MoveTo(0, 0), DisableBlinking,)?;
+    execute!(stdout, MoveTo(0, 0), DisableBlinking)?;
 
     if let Err(e) = less_loop(opts.input.as_str()) {
         println!("error={:?}\r", e);
