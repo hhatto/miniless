@@ -134,7 +134,11 @@ fn re_render_display_lines(lines: &ropey::Rope, start_line_num: usize, window_ro
     let line_count = lines.len_lines() - 1;
 
     for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
-        let l = lines.line(start_line_num + idx as usize - 1);
+        let offset = start_line_num + idx as usize - 1;
+        if offset >= line_count - 1 {
+            break;
+        }
+        let l = lines.line(offset);
         execute!(stdout(), MoveTo(0, idx), Print(l))?;
         if idx as usize >= line_count - 1 {
             break;
