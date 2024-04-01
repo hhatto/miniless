@@ -11,7 +11,7 @@ pub struct SearchResult<'a> {
     pub word: String,
     pub word_vec: Vec<char>,    // input temporary search word
     pub lines: Vec<(u64, u64)>, // (line number, position)
-    now_idx: Option<usize>,
+    pub now_idx: Option<usize>,
 }
 
 impl SearchResult<'_> {
@@ -36,11 +36,11 @@ impl SearchResult<'_> {
     pub fn exists_match(self) -> bool {
         self.now_idx.is_some()
     }
-    pub fn get_near_line(&mut self, now_position: u64) -> Option<(u64, u64)> {
+    pub fn get_near_line(&mut self, now_pos: (u64, u64)) -> Option<(u64, u64)> {
         let mut pos = None;
         for idx in 0..self.lines.clone().len() {
             let (line_num, _) = self.lines[idx];
-            if line_num >= now_position {
+            if line_num >= now_pos.0 {
                 pos = Some(self.lines[idx]);
                 self.now_idx = Some(idx);
                 break;
