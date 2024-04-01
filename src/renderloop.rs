@@ -189,8 +189,9 @@ fn handler_search_word_input_mode(
                     // set search result
                     *search_result.lines_mut() = result;
 
-                    let now_position = display_lines.start + display_lines.cursor_pos.0;
-                    if let Some((lnum, _lcol)) = search_result.get_near_line(now_position) {
+                    let now_position_row = display_lines.start + display_lines.cursor_pos.0;
+                    let now_position_col = display_lines.cursor_pos.1;
+                    if let Some((lnum, _lcol)) = search_result.get_near_line((now_position_row, now_position_col)) {
                         lcol = _lcol;
                         // jump to result line
                         execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
@@ -198,7 +199,9 @@ fn handler_search_word_input_mode(
                         re_render_display_lines(lines, lnum as usize, window_rows)?;
 
                         *display_lines.start_mut() = lnum - 1;
+                        // TODO: check this
                         *display_lines.end_mut() = lnum - 1;
+                        // *display_lines.end_mut() = lnum + window_rows as u64 - STATUS_LINE_OFFSET as u64 - 1;
                         execute!(stdout(), MoveTo(0, 0))?;
                     }
                 }
@@ -208,7 +211,7 @@ fn handler_search_word_input_mode(
 
             return_search_word_input_mode = false;
             execute!(stdout(), MoveTo(0, 0))?;
-            execute!(stdout(), MoveTo(lcol as u16, display_lines.cursor_pos.0 as u16))?;
+            execute!(stdout(), MoveTo(lcol as u16, 0))?;
             *search_result.word_vec_mut() = Vec::new();
         }
         Event::Key(KeyEvent {
@@ -251,14 +254,12 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
 
     loop {
         let (cursor_pos_col, cursor_pos_row) = position()?;
-        let now_line_num = display_lines.start + 1 + cursor_pos_row as u64;
-        let now_line_idx = now_line_num as usize - 1;
-        let now_line = lines.line(now_line_idx);
-        let line_len = if let Some(v) = now_line.as_str() {
-            v.trim_end().len()
+        let now_line_num = if is_search_word_input_mode {
+            display_lines.start + 1 + display_lines.cursor_pos.0
         } else {
-            0
+            display_lines.start + 1 + cursor_pos_row as u64
         };
+        let now_line_idx = now_line_num as usize - 1;
 
         let _ = render_status_line(now_line_num, line_count, cursor_pos_col as u64 + 1, &display_lines, &search_result);
 
@@ -276,6 +277,13 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
                 &mut search_result,
             )?;
         } else {
+            let now_line = lines.line(now_line_idx);
+            let line_len = if let Some(v) = now_line.as_str() {
+                v.trim_end().len()
+            } else {
+                0
+            };
+
             let _ = render_search_line(&search_result);
 
             execute!(stdout(), SavePosition)?;
@@ -410,9 +418,11 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
                     ..
                 }) => {
                     // jump next search result
-                    // let now_position = display_lines.start + cursor_pos_row as u64;
                     if search_result.clone().exists_match() {
-                        if let Some((lnum, lcol)) = search_result.next() {
+                        let now_position_row = now_line_num + 1;
+                        let now_position_col = display_lines.cursor_pos.1;
+                        if let Some((lnum, _lcol)) = search_result.get_near_line((now_position_row, now_position_col)) {
+                            let lcol = _lcol;
                             // jump to result line
                             execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
 
