@@ -199,6 +199,7 @@ fn handler_search_word_input_mode(
                         execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
 
                         re_render_display_lines(lines, lnum as usize, window_rows)?;
+                        render_search_line(search_result)?;
 
                         *display_lines.start_mut() = lnum - 1;
                         // TODO: check this
@@ -436,7 +437,7 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
                         };
                     };
 
-                    // TODO: render search line
+                    render_search_line(&search_result)?;
                 }
                 Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => break,
                 _ => (),
