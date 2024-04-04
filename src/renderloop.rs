@@ -159,8 +159,10 @@ fn handler_search_word_input_mode(
     let mut return_search_word_input_mode = is_search_word_input_mode;
     match event {
         Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => {
+            // clear search line and restore cursor position in display area
             return_search_word_input_mode = false;
-            execute!(stdout(), RestorePosition)?;
+            clear_search_line()?;
+            execute!(stdout(), MoveTo(0, 0), MoveTo(display_lines.cursor_pos.1 as u16, display_lines.cursor_pos.0 as u16))?;
             *search_result.word_vec_mut() = Vec::new();
         }
         Event::Key(KeyEvent {
