@@ -48,7 +48,10 @@ impl SearchResult<'_> {
         }
         pos
     }
+
+    #[allow(dead_code)]
     pub fn next(&mut self) -> Option<(u64, u64)> {
+        // TODO: need this fn?
         let result_count = self.lines.len();
         match self.now_idx {
             Some(n) => {
