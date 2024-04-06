@@ -84,13 +84,16 @@ fn render_status_line(
 
     let percentage = line_count as f64 / max_line_count as f64 * 100.;
     let l = if DEBUG {
+        let (cursor_pos_col, cursor_pos_row) = position()?;
         format!(
-            "{}/{}({:3.0}%) search={:?}, {:?}, {:?}",
+            "{}/{}({:3.0}%) pos={:?}, search={:?}, {:?}, {:?}",
             line_count,
             max_line_count,
             percentage as usize,
+            (cursor_pos_row, cursor_pos_col),
             search_result.word,
             search_result.lines.len(),
+            // search_result.now_idx,
             display_lines
         )
     } else {
@@ -251,6 +254,218 @@ fn handler_search_word_input_mode(
     Ok(return_search_word_input_mode)
 }
 
+fn handler_display_input_mode(
+    display_lines: &mut DisplayLines,
+    window_rows: u16,
+    cursor_pos_row: u16,
+    cursor_pos_col: u16,
+    now_line_idx: usize,
+    line_count: usize,
+    lines: &ropey::Rope,
+    event: &Event,
+    is_search_word_input_mode: bool,
+    search_result: &mut SearchResult,
+) -> io::Result<bool> {
+    let mut return_search_word_input_mode = is_search_word_input_mode;
+    let now_line = lines.line(now_line_idx);
+    let line_len = if let Some(v) = now_line.as_str() {
+        v.trim_end().len()
+    } else {
+        0
+    };
+
+    match event {
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('j') | KeyCode::Down,
+            ..
+        }) => {
+            let mut col_diff = 0;
+            let mut next_line_len = 0;
+            // save cursor position before move
+            let before_cursor_pos_col = display_lines.shadow_cursor_pos.1;
+
+            if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) == cursor_pos_row
+                && line_count != (display_lines.end + 1) as usize
+            {
+                *display_lines.start_mut() = display_lines.start + 1;
+                *display_lines.end_mut() = display_lines.end + 1;
+                let l = lines.line(display_lines.end as usize);
+                // NOTE: use format because debug print
+                execute!(
+                    stdout(),
+                    ScrollUp(1),
+                    SavePosition,
+                    MoveLeft(cursor_pos_col),
+                    Print(format!("{}", l)),
+                    RestorePosition
+                )?;
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64 + 1, before_cursor_pos_col);
+
+                // TODO: last line
+                let now_line = lines.line(now_line_idx + 1);
+                next_line_len = utils::line::get_stripped_line_length(now_line);
+                next_line_len = next_line_len.saturating_sub(1);
+                if cursor_pos_col > next_line_len as u16 {
+                    col_diff = cursor_pos_col - next_line_len as u16;
+                }
+            } else if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) != cursor_pos_row
+                && line_count != (cursor_pos_row + 1) as usize
+            {
+                execute!(stdout(), MoveDown(1))?;
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64 + 1, before_cursor_pos_col);
+
+                // reset cursor position when line length is shorter than cursor position
+                let now_line = lines.line(now_line_idx + 1);
+                next_line_len = utils::line::get_stripped_line_length(now_line);
+                next_line_len = next_line_len.saturating_sub(1);
+                if cursor_pos_col > next_line_len as u16 {
+                    col_diff = cursor_pos_col - next_line_len as u16;
+                }
+            }
+
+            if col_diff > 0 {
+                let _shadow_cursor_pos_col = display_lines.shadow_cursor_pos.1;
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, _shadow_cursor_pos_col);
+                execute!(stdout(), MoveLeft(col_diff))?;
+            }
+
+            // fix col position for shadow cursor
+            let shadow_cursor_col_diff = is_required_correction_cursor_col(
+                cursor_pos_col as u64,
+                before_cursor_pos_col,
+                next_line_len as u64,
+            );
+            if shadow_cursor_col_diff > 0 {
+                execute!(stdout(), MoveRight(shadow_cursor_col_diff))?;
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, before_cursor_pos_col);
+            }
+        }
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('k') | KeyCode::Up,
+            ..
+        }) => {
+            let mut col_diff = 0;
+            let mut prev_line_len = 0;
+            // save cursor position before move
+            let before_cursor_pos_col = display_lines.shadow_cursor_pos.1;
+
+            if 0 == cursor_pos_row && display_lines.start > 0 {
+                *display_lines.start_mut() = display_lines.start - 1;
+                *display_lines.end_mut() = display_lines.end - 1;
+                let l = lines.line(display_lines.start as usize);
+                // NOTE: use format because debug print
+                execute!(
+                    stdout(),
+                    ScrollDown(1),
+                    SavePosition,
+                    MoveLeft(cursor_pos_col),
+                    Print(format!("{}", l)),
+                    RestorePosition
+                )?;
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64 - 1, before_cursor_pos_col);
+
+                // TODO: first line
+                let now_line = lines.line(now_line_idx - 1);
+                prev_line_len = utils::line::get_stripped_line_length(now_line);
+                prev_line_len = prev_line_len.saturating_sub(1);
+                if cursor_pos_col > prev_line_len as u16 {
+                    col_diff = cursor_pos_col - prev_line_len as u16;
+                }
+            } else if 0 != cursor_pos_row {
+                execute!(stdout(), MoveUp(1))?;
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64 - 1, before_cursor_pos_col);
+
+                // reset cursor position when line length is shorter than cursor position
+                let now_line = lines.line(now_line_idx - 1);
+                prev_line_len = utils::line::get_stripped_line_length(now_line);
+                prev_line_len = prev_line_len.saturating_sub(1);
+                if cursor_pos_col > prev_line_len as u16 {
+                    col_diff = cursor_pos_col - prev_line_len as u16;
+                }
+            }
+
+            if col_diff > 0 {
+                let _shadow_cursor_pos_col = display_lines.shadow_cursor_pos.1;
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, _shadow_cursor_pos_col);
+                execute!(stdout(), MoveLeft(col_diff))?;
+            }
+
+            // fix col position for shadow cursor
+            let shadow_cursor_col_diff = is_required_correction_cursor_col(
+                cursor_pos_col as u64,
+                before_cursor_pos_col,
+                prev_line_len as u64,
+            );
+            if shadow_cursor_col_diff > 0 {
+                execute!(stdout(), MoveRight(shadow_cursor_col_diff))?;
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, before_cursor_pos_col);
+            }
+        }
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('h') | KeyCode::Left,
+            ..
+        }) => {
+            if cursor_pos_col > 0 {
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64 - 1);
+                execute!(stdout(), MoveLeft(1))?
+            }
+        }
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('l') | KeyCode::Right,
+            ..
+        }) => {
+            if line_len as u16 - 1 > cursor_pos_col {
+                *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64 + 1);
+                execute!(stdout(), MoveRight(1))?
+            }
+        }
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('u'),
+            modifiers: KeyModifiers::CONTROL,
+            ..
+        }) => execute!(stdout(), MoveUp(20))?,
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('d'),
+            modifiers: KeyModifiers::CONTROL,
+            ..
+        }) => execute!(stdout(), MoveDown(20))?,
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('/'),
+            ..
+        }) => {
+            return_search_word_input_mode = true;
+            *display_lines.cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64);
+            clear_search_line()?;
+            execute!(stdout(), SavePosition, MoveTo(0, window_rows + 1), Print("/"))?;
+        }
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('n'),
+            ..
+        }) => {
+            // jump next search result
+            if search_result.clone().exists_match() {
+                let now_position_row = now_line_idx as u64 + 2;
+                let now_position_col = display_lines.cursor_pos.1;
+                if let Some((lnum, _lcol)) = search_result.get_near_line((now_position_row, now_position_col)) {
+                    let lcol = _lcol;
+                    // jump to result line
+                    execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
+
+                    re_render_display_lines(lines, lnum as usize, window_rows)?;
+
+                    *display_lines.start_mut() = lnum - 1;
+                    *display_lines.end_mut() = lnum - 1;
+                    execute!(stdout(), RestorePosition, MoveTo(0, 0), MoveTo(lcol as u16, 0))?;
+                };
+            };
+
+            render_search_line(search_result)?;
+        }
+        _ => (),
+    };
+    Ok(return_search_word_input_mode)
+}
+
 pub fn less_loop(filename: &str) -> io::Result<()> {
     let f = File::open(filename)?;
     let lines = ropey::Rope::from_reader(f)?;
@@ -302,207 +517,24 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
                 &mut search_result,
             )?;
         } else {
-            let now_line = lines.line(now_line_idx);
-            let line_len = if let Some(v) = now_line.as_str() {
-                v.trim_end().len()
-            } else {
-                0
-            };
-
             let _ = render_search_line(&search_result);
 
             execute!(stdout(), SavePosition)?;
 
-            match event {
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('j') | KeyCode::Down,
-                    ..
-                }) => {
-                    let mut col_diff = 0;
-                    let mut next_line_len = 0;
-                    // save cursor position before move
-                    let before_cursor_pos_col = display_lines.shadow_cursor_pos.1;
+            if let Event::Key(KeyEvent { code: KeyCode::Esc, .. }) = event { break }
 
-                    if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) == cursor_pos_row
-                        && line_count != (display_lines.end + 1) as usize
-                    {
-                        *display_lines.start_mut() = display_lines.start + 1;
-                        *display_lines.end_mut() = display_lines.end + 1;
-                        let l = lines.line(display_lines.end as usize);
-                        // NOTE: use format because debug print
-                        execute!(
-                            stdout(),
-                            ScrollUp(1),
-                            SavePosition,
-                            MoveLeft(cursor_pos_col),
-                            Print(format!("{}", l)),
-                            RestorePosition
-                        )?;
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64 + 1, before_cursor_pos_col);
-
-                        // TODO: last line
-                        let now_line = lines.line(now_line_idx + 1);
-                        next_line_len = utils::line::get_stripped_line_length(now_line);
-                        next_line_len = next_line_len.saturating_sub(1);
-                        if cursor_pos_col > next_line_len as u16 {
-                            col_diff = cursor_pos_col - next_line_len as u16;
-                        }
-                    } else if (window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16) != cursor_pos_row
-                        && line_count != (cursor_pos_row + 1) as usize
-                    {
-                        execute!(stdout(), MoveDown(1))?;
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64 + 1, before_cursor_pos_col);
-
-                        // reset cursor position when line length is shorter than cursor position
-                        let now_line = lines.line(now_line_idx + 1);
-                        next_line_len = utils::line::get_stripped_line_length(now_line);
-                        next_line_len = next_line_len.saturating_sub(1);
-                        if cursor_pos_col > next_line_len as u16 {
-                            col_diff = cursor_pos_col - next_line_len as u16;
-                        }
-                    }
-
-                    if col_diff > 0 {
-                        let _shadow_cursor_pos_col = display_lines.shadow_cursor_pos.1;
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, _shadow_cursor_pos_col);
-                        execute!(stdout(), MoveLeft(col_diff))?;
-                    }
-
-                    // fix col position for shadow cursor
-                    let shadow_cursor_col_diff = is_required_correction_cursor_col(
-                        cursor_pos_col as u64,
-                        before_cursor_pos_col,
-                        next_line_len as u64,
-                    );
-                    if shadow_cursor_col_diff > 0 {
-                        execute!(stdout(), MoveRight(shadow_cursor_col_diff))?;
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, before_cursor_pos_col);
-                    }
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('k') | KeyCode::Up,
-                    ..
-                }) => {
-                    let mut col_diff = 0;
-                    let mut prev_line_len = 0;
-                    // save cursor position before move
-                    let before_cursor_pos_col = display_lines.shadow_cursor_pos.1;
-
-                    if 0 == cursor_pos_row && display_lines.start > 0 {
-                        *display_lines.start_mut() = display_lines.start - 1;
-                        *display_lines.end_mut() = display_lines.end - 1;
-                        let l = lines.line(display_lines.start as usize);
-                        // NOTE: use format because debug print
-                        execute!(
-                            stdout(),
-                            ScrollDown(1),
-                            SavePosition,
-                            MoveLeft(cursor_pos_col),
-                            Print(format!("{}", l)),
-                            RestorePosition
-                        )?;
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64 - 1, before_cursor_pos_col);
-
-                        // TODO: first line
-                        let now_line = lines.line(now_line_idx - 1);
-                        prev_line_len = utils::line::get_stripped_line_length(now_line);
-                        prev_line_len = prev_line_len.saturating_sub(1);
-                        if cursor_pos_col > prev_line_len as u16 {
-                            col_diff = cursor_pos_col - prev_line_len as u16;
-                        }
-                    } else if 0 != cursor_pos_row {
-                        execute!(stdout(), MoveUp(1))?;
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64 - 1, before_cursor_pos_col);
-
-                        // reset cursor position when line length is shorter than cursor position
-                        let now_line = lines.line(now_line_idx - 1);
-                        prev_line_len = utils::line::get_stripped_line_length(now_line);
-                        prev_line_len = prev_line_len.saturating_sub(1);
-                        if cursor_pos_col > prev_line_len as u16 {
-                            col_diff = cursor_pos_col - prev_line_len as u16;
-                        }
-                    }
-
-                    if col_diff > 0 {
-                        let _shadow_cursor_pos_col = display_lines.shadow_cursor_pos.1;
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, _shadow_cursor_pos_col);
-                        execute!(stdout(), MoveLeft(col_diff))?;
-                    }
-
-                    // fix col position for shadow cursor
-                    let shadow_cursor_col_diff = is_required_correction_cursor_col(
-                        cursor_pos_col as u64,
-                        before_cursor_pos_col,
-                        prev_line_len as u64,
-                    );
-                    if shadow_cursor_col_diff > 0 {
-                        execute!(stdout(), MoveRight(shadow_cursor_col_diff))?;
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, before_cursor_pos_col);
-                    }
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('h') | KeyCode::Left,
-                    ..
-                }) => {
-                    if cursor_pos_col > 0 {
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64 - 1);
-                        execute!(stdout(), MoveLeft(1))?
-                    }
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('l') | KeyCode::Right,
-                    ..
-                }) => {
-                    if line_len as u16 - 1 > cursor_pos_col {
-                        *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64 + 1);
-                        execute!(stdout(), MoveRight(1))?
-                    }
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('u'),
-                    modifiers: KeyModifiers::CONTROL,
-                    ..
-                }) => execute!(stdout(), MoveUp(20))?,
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('d'),
-                    modifiers: KeyModifiers::CONTROL,
-                    ..
-                }) => execute!(stdout(), MoveDown(20))?,
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('/'),
-                    ..
-                }) => {
-                    is_search_word_input_mode = true;
-                    *display_lines.cursor_pos_mut() = (cursor_pos_row as u64, cursor_pos_col as u64);
-                    clear_search_line()?;
-                    execute!(stdout(), SavePosition, MoveTo(0, window_rows + 1), Print("/"))?;
-                }
-                Event::Key(KeyEvent {
-                    code: KeyCode::Char('n'),
-                    ..
-                }) => {
-                    // jump next search result
-                    if search_result.clone().exists_match() {
-                        let now_position_row = now_line_num + 1;
-                        let now_position_col = display_lines.cursor_pos.1;
-                        if let Some((lnum, _lcol)) = search_result.get_near_line((now_position_row, now_position_col)) {
-                            let lcol = _lcol;
-                            // jump to result line
-                            execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
-
-                            re_render_display_lines(&lines, lnum as usize, window_rows)?;
-
-                            *display_lines.start_mut() = lnum - 1;
-                            *display_lines.end_mut() = lnum - 1;
-                            execute!(stdout(), RestorePosition, MoveTo(0, 0), MoveTo(lcol as u16, 0))?;
-                        };
-                    };
-
-                    render_search_line(&search_result)?;
-                }
-                Event::Key(KeyEvent { code: KeyCode::Esc, .. }) => break,
-                _ => (),
-            };
+            is_search_word_input_mode = handler_display_input_mode(
+                &mut display_lines,
+                window_rows,
+                cursor_pos_row,
+                cursor_pos_col,
+                now_line_idx,
+                line_count,
+                &lines,
+                &event,
+                is_search_word_input_mode,
+                &mut search_result,
+            )?;
         }
     }
 
