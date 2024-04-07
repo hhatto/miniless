@@ -92,7 +92,7 @@ fn render_status_line(
             percentage as usize,
             (cursor_pos_row, cursor_pos_col),
             search_result.word,
-            search_result.lines.len(),
+            search_result.match_lines.len(),
             // search_result.now_idx,
             display_lines
         )
@@ -215,7 +215,7 @@ fn handler_search_word_input_mode(
                 let result = search::search(search_result.filename, search_result.word.as_str())?;
                 if !result.is_empty() {
                     // set search result
-                    *search_result.lines_mut() = result;
+                    *search_result.match_lines_mut() = result;
 
                     let now_position_row = display_lines.start + display_lines.cursor_pos.0;
                     let now_position_col = display_lines.cursor_pos.1;

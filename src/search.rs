@@ -10,7 +10,7 @@ pub struct SearchResult<'a> {
     pub filename: &'a str,
     pub word: String,
     pub word_vec: Vec<char>,    // input temporary search word
-    pub lines: Vec<(u64, u64)>, // (line number, position)
+    pub match_lines: Vec<(u64, u64)>, // (line number, position)
     pub now_idx: Option<usize>,
 }
 
@@ -20,7 +20,7 @@ impl SearchResult<'_> {
             filename,
             word: String::new(),
             word_vec: Vec::new(),
-            lines: Vec::new(),
+            match_lines: Vec::new(),
             now_idx: None,
         }
     }
@@ -30,18 +30,18 @@ impl SearchResult<'_> {
     pub fn word_vec_mut(&mut self) -> &mut Vec<char> {
         &mut self.word_vec
     }
-    pub fn lines_mut(&mut self) -> &mut Vec<(u64, u64)> {
-        &mut self.lines
+    pub fn match_lines_mut(&mut self) -> &mut Vec<(u64, u64)> {
+        &mut self.match_lines
     }
     pub fn exists_match(self) -> bool {
         self.now_idx.is_some()
     }
     pub fn get_near_line(&mut self, now_pos: (u64, u64)) -> Option<(u64, u64)> {
         let mut pos = None;
-        for idx in 0..self.lines.clone().len() {
-            let (line_num, _) = self.lines[idx];
+        for idx in 0..self.match_lines.clone().len() {
+            let (line_num, _) = self.match_lines[idx];
             if line_num >= now_pos.0 {
-                pos = Some(self.lines[idx]);
+                pos = Some(self.match_lines[idx]);
                 self.now_idx = Some(idx);
                 break;
             }
@@ -49,27 +49,23 @@ impl SearchResult<'_> {
         pos
     }
 
-    #[allow(dead_code)]
-    pub fn next(&mut self) -> Option<(u64, u64)> {
-        // TODO: need this fn?
-        let result_count = self.lines.len();
-        match self.now_idx {
-            Some(n) => {
-                if result_count > 0 {
-                    let update_n = if result_count > (n + 1) { n + 1 } else { 0 };
-                    self.now_idx = Some(update_n);
-                    Some(self.lines[update_n])
-                } else {
-                    None
-                }
+    pub fn get_near_line_with_previous(&mut self, now_pos: (u64, u64)) -> Option<(u64, u64)> {
+        let mut pos = None;
+        for idx in (0..self.match_lines.clone().len()).rev() {
+            let (line_num, _) = self.match_lines[idx];
+            if line_num + 1 < now_pos.0 {
+                pos = Some(self.match_lines[idx]);
+                self.now_idx = Some(idx);
+                break;
             }
-            None => None,
         }
+        pos
     }
+
     pub fn reset(&mut self) {
         self.word = String::new();
         self.word_vec = Vec::new();
-        self.lines = Vec::new();
+        self.match_lines = Vec::new();
         self.now_idx = None;
     }
 }
