@@ -51,7 +51,7 @@ fn is_required_correction_cursor_col(col: u64, before_col: u64, line_len: u64) -
     if line_len > before_col {
         return before_col as u16;
     }
-    if line_len == 0 {
+    if line_len == 0 || line_len == 1 {
         return 0;
     }
     line_len as u16 - 1
@@ -254,6 +254,7 @@ fn handler_search_word_input_mode(
     Ok(return_search_word_input_mode)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handler_display_input_mode(
     display_lines: &mut DisplayLines,
     window_rows: u16,
@@ -331,9 +332,13 @@ fn handler_display_input_mode(
 
             // fix col position for shadow cursor
             let shadow_cursor_col_diff =
-                is_required_correction_cursor_col(cursor_pos_col as u64, before_cursor_pos_col, next_line_len as u64);
+                is_required_correction_cursor_col(cursor_pos_col as u64, before_cursor_pos_col, next_line_len as u64 + 1);
             if shadow_cursor_col_diff > 0 {
-                execute!(stdout(), MoveRight(shadow_cursor_col_diff))?;
+                let mut d = shadow_cursor_col_diff as i16 - cursor_pos_col as i16;
+                if d < 0 {
+                    d = 0;
+                }
+                execute!(stdout(), MoveRight(d as u16))?;
                 *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, before_cursor_pos_col);
             }
         }
@@ -389,9 +394,13 @@ fn handler_display_input_mode(
 
             // fix col position for shadow cursor
             let shadow_cursor_col_diff =
-                is_required_correction_cursor_col(cursor_pos_col as u64, before_cursor_pos_col, prev_line_len as u64);
+                is_required_correction_cursor_col(cursor_pos_col as u64, before_cursor_pos_col, prev_line_len as u64 + 1);
             if shadow_cursor_col_diff > 0 {
-                execute!(stdout(), MoveRight(shadow_cursor_col_diff))?;
+                let mut d = shadow_cursor_col_diff as i16 - cursor_pos_col as i16;
+                if d < 0 {
+                    d = 0;
+                }
+                execute!(stdout(), MoveRight(d as u16))?;
                 *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, before_cursor_pos_col);
             }
         }
