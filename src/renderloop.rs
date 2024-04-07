@@ -330,11 +330,8 @@ fn handler_display_input_mode(
             }
 
             // fix col position for shadow cursor
-            let shadow_cursor_col_diff = is_required_correction_cursor_col(
-                cursor_pos_col as u64,
-                before_cursor_pos_col,
-                next_line_len as u64,
-            );
+            let shadow_cursor_col_diff =
+                is_required_correction_cursor_col(cursor_pos_col as u64, before_cursor_pos_col, next_line_len as u64);
             if shadow_cursor_col_diff > 0 {
                 execute!(stdout(), MoveRight(shadow_cursor_col_diff))?;
                 *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, before_cursor_pos_col);
@@ -391,11 +388,8 @@ fn handler_display_input_mode(
             }
 
             // fix col position for shadow cursor
-            let shadow_cursor_col_diff = is_required_correction_cursor_col(
-                cursor_pos_col as u64,
-                before_cursor_pos_col,
-                prev_line_len as u64,
-            );
+            let shadow_cursor_col_diff =
+                is_required_correction_cursor_col(cursor_pos_col as u64, before_cursor_pos_col, prev_line_len as u64);
             if shadow_cursor_col_diff > 0 {
                 execute!(stdout(), MoveRight(shadow_cursor_col_diff))?;
                 *display_lines.shadow_cursor_pos_mut() = (cursor_pos_row as u64, before_cursor_pos_col);
@@ -521,7 +515,9 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
 
             execute!(stdout(), SavePosition)?;
 
-            if let Event::Key(KeyEvent { code: KeyCode::Esc, .. }) = event { break }
+            if let Event::Key(KeyEvent { code: KeyCode::Esc, .. }) = event {
+                break;
+            }
 
             is_search_word_input_mode = handler_display_input_mode(
                 &mut display_lines,
