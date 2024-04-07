@@ -464,6 +464,29 @@ fn handler_display_input_mode(
 
             render_search_line(search_result)?;
         }
+        Event::Key(KeyEvent {
+            code: KeyCode::Char('N'),
+            ..
+        }) => {
+            // jump next search result
+            if search_result.clone().exists_match() {
+                let now_position_row = now_line_idx as u64 + 2;
+                let now_position_col = display_lines.cursor_pos.1;
+                if let Some((lnum, _lcol)) = search_result.get_near_line_with_previous((now_position_row, now_position_col)) {
+                    let lcol = _lcol;
+                    // jump to result line
+                    execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
+
+                    re_render_display_lines(lines, lnum as usize, window_rows)?;
+
+                    *display_lines.start_mut() = lnum - 1;
+                    *display_lines.end_mut() = lnum - 1;
+                    execute!(stdout(), RestorePosition, MoveTo(0, 0), MoveTo(lcol as u16, 0))?;
+                };
+            };
+
+            render_search_line(search_result)?;
+        }
         _ => (),
     };
     Ok(return_search_word_input_mode)
