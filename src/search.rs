@@ -9,7 +9,7 @@ use grep::searcher::SearcherBuilder;
 pub struct SearchResult<'a> {
     pub filename: &'a str,
     pub word: String,
-    pub word_vec: Vec<char>,    // input temporary search word
+    pub word_vec: Vec<char>,          // input temporary search word
     pub match_lines: Vec<(u64, u64)>, // (line number, position)
     pub now_idx: Option<usize>,
 }
