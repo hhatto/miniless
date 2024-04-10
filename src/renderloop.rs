@@ -18,6 +18,7 @@ use crate::utils;
 const DEBUG: bool = true;
 const STATUS_LINE_OFFSET: usize = 2;
 const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
+const CURSOR_JUMP_OFFSET: u16 = 20;
 
 #[derive(Debug)]
 struct DisplayLines {
@@ -331,8 +332,11 @@ fn handler_display_input_mode(
             }
 
             // fix col position for shadow cursor
-            let shadow_cursor_col_diff =
-                is_required_correction_cursor_col(cursor_pos_col as u64, before_cursor_pos_col, next_line_len as u64 + 1);
+            let shadow_cursor_col_diff = is_required_correction_cursor_col(
+                cursor_pos_col as u64,
+                before_cursor_pos_col,
+                next_line_len as u64 + 1,
+            );
             if shadow_cursor_col_diff > 0 {
                 let mut d = shadow_cursor_col_diff as i16 - cursor_pos_col as i16;
                 if d < 0 {
@@ -393,8 +397,11 @@ fn handler_display_input_mode(
             }
 
             // fix col position for shadow cursor
-            let shadow_cursor_col_diff =
-                is_required_correction_cursor_col(cursor_pos_col as u64, before_cursor_pos_col, prev_line_len as u64 + 1);
+            let shadow_cursor_col_diff = is_required_correction_cursor_col(
+                cursor_pos_col as u64,
+                before_cursor_pos_col,
+                prev_line_len as u64 + 1,
+            );
             if shadow_cursor_col_diff > 0 {
                 let mut d = shadow_cursor_col_diff as i16 - cursor_pos_col as i16;
                 if d < 0 {
@@ -426,12 +433,20 @@ fn handler_display_input_mode(
             code: KeyCode::Char('u'),
             modifiers: KeyModifiers::CONTROL,
             ..
-        }) => execute!(stdout(), MoveUp(20))?,
+        }) => execute!(stdout(), MoveUp(CURSOR_JUMP_OFFSET))?,
         Event::Key(KeyEvent {
             code: KeyCode::Char('d'),
             modifiers: KeyModifiers::CONTROL,
             ..
-        }) => execute!(stdout(), MoveDown(20))?,
+        }) => {
+            let mut jump_offset: u16 = CURSOR_JUMP_OFFSET;
+            if line_count - 1 < now_line_idx + CURSOR_JUMP_OFFSET as usize {
+                jump_offset -= now_line_idx as u16 + jump_offset - line_count as u16 + 1;
+            }
+            if jump_offset > 0 {
+                execute!(stdout(), MoveDown(jump_offset))?
+            }
+        }
         Event::Key(KeyEvent {
             code: KeyCode::Char('/'),
             ..
@@ -472,7 +487,9 @@ fn handler_display_input_mode(
             if search_result.clone().exists_match() {
                 let now_position_row = now_line_idx as u64 + 2;
                 let now_position_col = display_lines.cursor_pos.1;
-                if let Some((lnum, _lcol)) = search_result.get_near_line_with_previous((now_position_row, now_position_col)) {
+                if let Some((lnum, _lcol)) =
+                    search_result.get_near_line_with_previous((now_position_row, now_position_col))
+                {
                     let lcol = _lcol;
                     // jump to result line
                     execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
@@ -512,7 +529,7 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
         // NOTE: use format, because debug print
         let disp = format!("{}", lines.line(idx as usize));
         execute!(stdout(), MoveTo(0, idx), Print(disp))?;
-        if idx >= line_count as u16 {
+        if idx >= line_count as u16 - 1 {
             break;
         }
     }
