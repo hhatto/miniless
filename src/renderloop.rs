@@ -433,7 +433,10 @@ fn handler_display_input_mode(
             code: KeyCode::Char('u'),
             modifiers: KeyModifiers::CONTROL,
             ..
-        }) => execute!(stdout(), MoveUp(CURSOR_JUMP_OFFSET))?,
+        }) => {
+            // TODO: scroll up
+            execute!(stdout(), MoveUp(CURSOR_JUMP_OFFSET))?
+        },
         Event::Key(KeyEvent {
             code: KeyCode::Char('d'),
             modifiers: KeyModifiers::CONTROL,
@@ -443,8 +446,16 @@ fn handler_display_input_mode(
             if line_count - 1 < now_line_idx + CURSOR_JUMP_OFFSET as usize {
                 jump_offset -= now_line_idx as u16 + jump_offset - line_count as u16 + 1;
             }
+
             if jump_offset > 0 {
-                execute!(stdout(), MoveDown(jump_offset))?
+                let p = window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16;
+                if cursor_pos_row + jump_offset > p {
+                    jump_offset = p - cursor_pos_row;
+                    // TODO: scroll down
+                }
+                if jump_offset > 0 {
+                    execute!(stdout(), MoveDown(jump_offset))?
+                }
             }
         }
         Event::Key(KeyEvent {
