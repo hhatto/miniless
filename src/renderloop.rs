@@ -472,8 +472,23 @@ fn handler_display_input_mode(
                 execute!(stdout(), RestorePosition)?;
                 *display_lines.start_mut() = line_start_idx as u64 - 1;
                 *display_lines.end_mut() = display_line_end as u64;
+
             }
-            // TODO: cursor down when display_lines.end == line_count - 1
+            let mut jump_offset = CURSOR_JUMP_OFFSET - scroll_offset;
+            if jump_offset > 0 {
+                let check_offset = display_lines.start as u16 + cursor_pos_row + jump_offset;
+                if check_offset > display_line_end as u16 {
+                    jump_offset = window_rows - cursor_pos_row - STATUS_LINE_OFFSET as u16 - 1;
+                }
+                if jump_offset > 0 {
+                    execute!(stdout(), MoveDown(jump_offset))?;
+                }
+
+                // for debug
+                if false {
+                    execute!(stdout(), SavePosition, Print(format!("pos={:?},sc={:?},jmp={:?},check={:?},lines.end={:?},line_end={:?},", cursor_pos_row, scroll_offset, jump_offset, check_offset, display_lines.end, display_line_end)), RestorePosition)?
+                }
+            }
         }
         Event::Key(KeyEvent {
             code: KeyCode::Char('/'),
