@@ -158,7 +158,7 @@ fn re_render_display_lines(lines: &ropey::Rope, start_line_num: usize, window_ro
 
     for idx in 0..(window_rows - STATUS_LINE_OFFSET as u16) {
         let offset = start_line_num + idx as usize - 1;
-        if offset >= line_count - 1 {
+        if offset >= line_count {
             break;
         }
         let l = lines.line(offset);
@@ -434,29 +434,46 @@ fn handler_display_input_mode(
             modifiers: KeyModifiers::CONTROL,
             ..
         }) => {
-            // TODO: scroll up
-            execute!(stdout(), MoveUp(CURSOR_JUMP_OFFSET))?
+            // TODO: scroll down
+            execute!(stdout(), MoveUp(CURSOR_JUMP_OFFSET))?;
+            // TODO: wip: scroll down
+            // execute!(stdout(), ScrollDown(CURSOR_JUMP_OFFSET))?;
+            // let mut line_start_idx = now_line_idx;
+            // if now_line_idx < CURSOR_JUMP_OFFSET as usize {
+            //     line_start_idx = 0;
+            // } else {
+            //     line_start_idx -= CURSOR_JUMP_OFFSET as usize;
+            // }
+            // execute!(stdout(), SavePosition, Clear(ClearType::All))?;
+            // re_render_display_lines(lines, line_start_idx, window_rows)?;
+            // execute!(stdout(), RestorePosition)?;
         },
         Event::Key(KeyEvent {
             code: KeyCode::Char('d'),
             modifiers: KeyModifiers::CONTROL,
             ..
         }) => {
-            let mut jump_offset: u16 = CURSOR_JUMP_OFFSET;
-            if line_count - 1 < now_line_idx + CURSOR_JUMP_OFFSET as usize {
-                jump_offset -= now_line_idx as u16 + jump_offset - line_count as u16 + 1;
+            let mut scroll_offset: u16 = CURSOR_JUMP_OFFSET;
+            let mut display_line_end = now_line_idx + CURSOR_JUMP_OFFSET as usize + window_rows as usize - STATUS_LINE_OFFSET;
+            if display_line_end > line_count - 1 {
+                scroll_offset = (display_line_end - line_count + 1) as u16;
+                display_line_end -= scroll_offset as usize;
             }
+            if display_line_end == line_count - 1 && display_lines.end == display_line_end as u64 {
+                scroll_offset = 0;
+            }
+            if scroll_offset > 0 {
+                execute!(stdout(), ScrollUp(scroll_offset))?;
 
-            if jump_offset > 0 {
-                let p = window_rows - DISPLAY_BOTTOM_LINE_OFFSET as u16;
-                if cursor_pos_row + jump_offset > p {
-                    jump_offset = p - cursor_pos_row;
-                    // TODO: scroll down
-                }
-                if jump_offset > 0 {
-                    execute!(stdout(), MoveDown(jump_offset))?
-                }
+                execute!(stdout(), SavePosition, Clear(ClearType::All))?;
+                let line_start_idx = now_line_idx + scroll_offset as usize;
+                let line_start_num = line_start_idx;
+                re_render_display_lines(lines, line_start_num, window_rows)?;
+                execute!(stdout(), RestorePosition)?;
+                *display_lines.start_mut() = line_start_idx as u64 - 1;
+                *display_lines.end_mut() = display_line_end as u64;
             }
+            // TODO: cursor down when display_lines.end == line_count - 1
         }
         Event::Key(KeyEvent {
             code: KeyCode::Char('/'),
