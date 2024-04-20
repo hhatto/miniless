@@ -447,14 +447,15 @@ fn handler_display_input_mode(
             // execute!(stdout(), SavePosition, Clear(ClearType::All))?;
             // re_render_display_lines(lines, line_start_idx, window_rows)?;
             // execute!(stdout(), RestorePosition)?;
-        },
+        }
         Event::Key(KeyEvent {
             code: KeyCode::Char('d'),
             modifiers: KeyModifiers::CONTROL,
             ..
         }) => {
             let mut scroll_offset: u16 = CURSOR_JUMP_OFFSET;
-            let mut display_line_end = now_line_idx + CURSOR_JUMP_OFFSET as usize + window_rows as usize - STATUS_LINE_OFFSET;
+            let mut display_line_end =
+                now_line_idx + CURSOR_JUMP_OFFSET as usize + window_rows as usize - STATUS_LINE_OFFSET;
             if display_line_end > line_count - 1 {
                 scroll_offset = (display_line_end - line_count + 1) as u16;
                 display_line_end -= scroll_offset as usize;
@@ -472,7 +473,6 @@ fn handler_display_input_mode(
                 execute!(stdout(), RestorePosition)?;
                 *display_lines.start_mut() = line_start_idx as u64 - 1;
                 *display_lines.end_mut() = display_line_end as u64;
-
             }
             let mut jump_offset = CURSOR_JUMP_OFFSET - scroll_offset;
             if jump_offset > 0 {
@@ -486,7 +486,20 @@ fn handler_display_input_mode(
 
                 // for debug
                 if false {
-                    execute!(stdout(), SavePosition, Print(format!("pos={:?},sc={:?},jmp={:?},check={:?},lines.end={:?},line_end={:?},", cursor_pos_row, scroll_offset, jump_offset, check_offset, display_lines.end, display_line_end)), RestorePosition)?
+                    execute!(
+                        stdout(),
+                        SavePosition,
+                        Print(format!(
+                            "pos={:?},sc={:?},jmp={:?},check={:?},lines.end={:?},line_end={:?},",
+                            cursor_pos_row,
+                            scroll_offset,
+                            jump_offset,
+                            check_offset,
+                            display_lines.end,
+                            display_line_end
+                        )),
+                        RestorePosition
+                    )?
                 }
             }
         }
