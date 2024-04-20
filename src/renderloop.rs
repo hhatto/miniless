@@ -434,19 +434,56 @@ fn handler_display_input_mode(
             modifiers: KeyModifiers::CONTROL,
             ..
         }) => {
-            // TODO: scroll down
-            execute!(stdout(), MoveUp(CURSOR_JUMP_OFFSET))?;
-            // TODO: wip: scroll down
-            // execute!(stdout(), ScrollDown(CURSOR_JUMP_OFFSET))?;
-            // let mut line_start_idx = now_line_idx;
-            // if now_line_idx < CURSOR_JUMP_OFFSET as usize {
-            //     line_start_idx = 0;
-            // } else {
-            //     line_start_idx -= CURSOR_JUMP_OFFSET as usize;
-            // }
-            // execute!(stdout(), SavePosition, Clear(ClearType::All))?;
-            // re_render_display_lines(lines, line_start_idx, window_rows)?;
-            // execute!(stdout(), RestorePosition)?;
+            let mut scroll_offset: u16 = CURSOR_JUMP_OFFSET;
+            let display_line_start = if display_lines.start <= CURSOR_JUMP_OFFSET as u64 {
+                scroll_offset = if display_lines.start == 0 {
+                    0
+                } else {
+                    CURSOR_JUMP_OFFSET - display_lines.start as u16
+                };
+                1
+            } else {
+                display_lines.start - CURSOR_JUMP_OFFSET as u64 + 1
+            };
+
+            if scroll_offset > 0 {
+                execute!(stdout(), ScrollDown(scroll_offset))?;
+
+                *display_lines.start_mut() = display_line_start - 1;
+                *display_lines.end_mut() = display_line_start + window_rows as u64 - STATUS_LINE_OFFSET as u64 - 2;
+
+                execute!(stdout(), SavePosition, Clear(ClearType::All))?;
+                re_render_display_lines(lines, display_line_start as usize, window_rows)?;
+                execute!(stdout(), RestorePosition)?;
+            }
+            let mut jump_offset = CURSOR_JUMP_OFFSET - scroll_offset;
+            if jump_offset > 0 {
+                let check_offset = 0; //cursor_pos_row - jump_offset;
+                if jump_offset > cursor_pos_row {
+                    jump_offset -= cursor_pos_row;
+                }
+                if jump_offset > 0 {
+                    execute!(stdout(), MoveUp(jump_offset))?;
+                }
+
+                // for debug
+                if false {
+                    execute!(
+                        stdout(),
+                        SavePosition,
+                        Print(format!(
+                            "pos={:?},sc={:?},jmp={:?},check={:?},lines.end={:?},line_start={:?},",
+                            cursor_pos_row,
+                            scroll_offset,
+                            jump_offset,
+                            check_offset,
+                            display_lines.end,
+                            display_line_start
+                        )),
+                        RestorePosition
+                    )?
+                }
+            }
         }
         Event::Key(KeyEvent {
             code: KeyCode::Char('d'),
@@ -482,24 +519,6 @@ fn handler_display_input_mode(
                 }
                 if jump_offset > 0 {
                     execute!(stdout(), MoveDown(jump_offset))?;
-                }
-
-                // for debug
-                if false {
-                    execute!(
-                        stdout(),
-                        SavePosition,
-                        Print(format!(
-                            "pos={:?},sc={:?},jmp={:?},check={:?},lines.end={:?},line_end={:?},",
-                            cursor_pos_row,
-                            scroll_offset,
-                            jump_offset,
-                            check_offset,
-                            display_lines.end,
-                            display_line_end
-                        )),
-                        RestorePosition
-                    )?
                 }
             }
         }
