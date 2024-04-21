@@ -8,6 +8,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
 
+mod app;
 mod renderloop;
 mod search;
 mod utils;
@@ -25,13 +26,15 @@ fn main() -> io::Result<()> {
     let opts: Opts = Opts::parse();
     let mut stdout = stdout();
 
+    let less_app = app::MiniLessApp::new("debug.log");
+
     enable_raw_mode()?;
 
     execute!(stdout, Clear(ClearType::All))?;
 
     execute!(stdout, MoveTo(0, 0), DisableBlinking)?;
 
-    if let Err(e) = renderloop::less_loop(opts.input.as_str()) {
+    if let Err(e) = less_app.run(opts.input.as_str()) {
         println!("error={:?}\r", e);
     }
 

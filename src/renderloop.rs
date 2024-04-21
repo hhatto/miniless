@@ -1,3 +1,4 @@
+use log::debug;
 use std::fs::File;
 use std::io;
 use std::io::stdout;
@@ -491,8 +492,9 @@ fn handler_display_input_mode(
             ..
         }) => {
             let mut scroll_offset: u16 = CURSOR_JUMP_OFFSET;
-            let mut display_line_end =
-                now_line_idx + CURSOR_JUMP_OFFSET as usize + window_rows as usize - STATUS_LINE_OFFSET;
+            let mut display_line_end = now_line_idx + CURSOR_JUMP_OFFSET as usize + window_rows as usize
+                - STATUS_LINE_OFFSET
+                - cursor_pos_row as usize;
             if display_line_end > line_count - 1 {
                 scroll_offset = (display_line_end - line_count + 1) as u16;
                 display_line_end -= scroll_offset as usize;
@@ -520,6 +522,11 @@ fn handler_display_input_mode(
                 if jump_offset > 0 {
                     execute!(stdout(), MoveDown(jump_offset))?;
                 }
+
+                debug!(
+                    "pos={:?},sc={:?},jmp={:?},check={:?},lines.end={:?},line_end={:?},",
+                    cursor_pos_row, scroll_offset, jump_offset, check_offset, display_lines.end, display_line_end
+                );
             }
         }
         Event::Key(KeyEvent {
@@ -640,6 +647,7 @@ pub fn less_loop(filename: &str) -> io::Result<()> {
             execute!(stdout(), SavePosition)?;
 
             if let Event::Key(KeyEvent { code: KeyCode::Esc, .. }) = event {
+                debug!("exit");
                 break;
             }
 
