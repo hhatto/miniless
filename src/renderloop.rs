@@ -504,11 +504,11 @@ fn handler_display_input_mode(
                 execute!(stdout(), ScrollUp(scroll_offset))?;
 
                 execute!(stdout(), SavePosition, Clear(ClearType::All))?;
-                let line_start_idx = now_line_idx + scroll_offset as usize;
-                let line_start_num = line_start_idx;
+                let line_start_num = now_line_idx + scroll_offset as usize;
+                let line_start_idx = line_start_num - 1;
                 re_render_display_lines(lines, line_start_num, window_rows)?;
                 execute!(stdout(), RestorePosition)?;
-                *display_lines.start_mut() = line_start_idx as u64 - 1;
+                *display_lines.start_mut() = line_start_idx as u64;
                 *display_lines.end_mut() = display_line_end as u64;
             }
             let mut jump_offset = CURSOR_JUMP_OFFSET - scroll_offset;
