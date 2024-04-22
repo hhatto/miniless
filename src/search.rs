@@ -1,5 +1,5 @@
 use std::io;
-
+use log::debug;
 use grep::matcher::Matcher;
 use grep::regex::RegexMatcher;
 use grep::searcher::sinks::UTF8;
@@ -71,6 +71,7 @@ impl SearchResult<'_> {
 }
 
 pub fn search(filename: &str, search_word: &str) -> io::Result<Vec<(u64, u64)>> {
+    debug!("start search: search_word={}", search_word);
     let matcher = RegexMatcher::new(search_word).unwrap();
     let mut matches: Vec<(u64, u64)> = vec![];
     let mut searcher = SearcherBuilder::new().build();
@@ -83,5 +84,6 @@ pub fn search(filename: &str, search_word: &str) -> io::Result<Vec<(u64, u64)>> 
             Ok(true)
         }),
     )?;
+    debug!("start end: search_word={}, hit={}", search_word, matches.len());
     Ok(matches)
 }
