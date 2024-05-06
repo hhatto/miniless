@@ -16,6 +16,7 @@ impl MiniLessApp {
         if rust_log_value == "debug" {
             let log_file = fs::File::create(log_filename).expect("Unable to create log file");
             env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
+                .format_timestamp(Some(env_logger::TimestampPrecision::Millis))
                 .target(env_logger::Target::Pipe(Box::new(log_file)))
                 .init();
         }
