@@ -19,7 +19,7 @@ use crate::utils;
 const DEBUG: bool = true;
 const STATUS_LINE_OFFSET: usize = 2;
 const DISPLAY_BOTTOM_LINE_OFFSET: usize = STATUS_LINE_OFFSET + 1;
-const CURSOR_JUMP_OFFSET: u16 = 20;
+const CURSOR_JUMP_OFFSET: u16 = 30;
 
 #[derive(Debug)]
 struct DisplayLines {
