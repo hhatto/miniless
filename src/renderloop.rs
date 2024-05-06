@@ -496,8 +496,8 @@ fn handler_display_input_mode(
                 - STATUS_LINE_OFFSET
                 - cursor_pos_row as usize;
             if display_line_end > line_count - 1 {
-                scroll_offset = (display_line_end - line_count + 1) as u16;
-                display_line_end -= scroll_offset as usize;
+                scroll_offset = CURSOR_JUMP_OFFSET - (display_line_end - line_count - 1) as u16;
+                display_line_end = line_count - 1;
             }
             if display_line_end == line_count - 1 && display_lines.end == display_line_end as u64 {
                 scroll_offset = 0;
@@ -512,12 +512,17 @@ fn handler_display_input_mode(
                 execute!(stdout(), RestorePosition)?;
                 *display_lines.start_mut() = line_start_idx as u64;
                 *display_lines.end_mut() = display_line_end as u64;
+                debug!("Ctrl-d: scroll_offset sc={:?}, line_end={:?}, count={:?}, display_lines={:?}", scroll_offset, display_line_end, line_count - 1, display_lines);
             }
             let mut jump_offset = CURSOR_JUMP_OFFSET - scroll_offset;
             if jump_offset > 0 {
                 let check_offset = display_lines.start as u16 + cursor_pos_row + jump_offset;
-                if check_offset > display_line_end as u16 {
+                if check_offset > line_count as u16 {
+                    jump_offset = line_count as u16 - display_lines.start as u16 - cursor_pos_row - 1;
+                    debug!("Ctrl-d: over line_count jmp={:?}", jump_offset);
+                } else if check_offset > display_line_end as u16 {
                     jump_offset = window_rows - cursor_pos_row - STATUS_LINE_OFFSET as u16 - 1;
+                    debug!("Ctrl-d: jmp={:?}", jump_offset);
                 }
                 if jump_offset > 0 {
                     execute!(stdout(), MoveDown(jump_offset))?;
