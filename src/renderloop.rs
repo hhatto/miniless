@@ -570,7 +570,7 @@ fn handler_display_input_mode(
             code: KeyCode::Char('N'),
             ..
         }) => {
-            // jump next search result
+            // jump previous search result
             if search_result.clone().exists_match() {
                 let now_position_row = now_line_idx as u64 + 2;
                 let now_position_col = display_lines.cursor_pos.1;
