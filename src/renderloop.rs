@@ -516,7 +516,13 @@ fn handler_display_input_mode(
                 execute!(stdout(), RestorePosition)?;
                 *display_lines.start_mut() = line_start_idx as u64;
                 *display_lines.end_mut() = display_line_end as u64;
-                debug!("Ctrl-d: scroll_offset sc={:?}, line_end={:?}, count={:?}, display_lines={:?}", scroll_offset, display_line_end, line_count - 1, display_lines);
+                debug!(
+                    "Ctrl-d: scroll_offset sc={:?}, line_end={:?}, count={:?}, display_lines={:?}",
+                    scroll_offset,
+                    display_line_end,
+                    line_count - 1,
+                    display_lines
+                );
             }
             let mut jump_offset = CURSOR_JUMP_OFFSET - scroll_offset;
             if jump_offset > 0 {
