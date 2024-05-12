@@ -1,9 +1,9 @@
-use std::io;
-use log::debug;
 use grep::matcher::Matcher;
 use grep::regex::RegexMatcher;
 use grep::searcher::sinks::UTF8;
 use grep::searcher::SearcherBuilder;
+use log::debug;
+use std::io;
 
 #[derive(Clone, Debug)]
 pub struct SearchResult<'a> {
