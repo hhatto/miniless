@@ -84,7 +84,11 @@ fn render_status_line(
     let (window_columns, window_rows) = terminal::size()?;
     let status_line = vec![" "; window_columns as usize];
 
-    let percentage = line_count as f64 / max_line_count as f64 * 100.;
+    let percentage = if line_count <= 1 {
+        0.
+    } else {
+        line_count as f64 / max_line_count as f64 * 100.
+    };
     let l = if DEBUG {
         let (cursor_pos_col, cursor_pos_row) = position()?;
         format!(
