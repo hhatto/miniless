@@ -561,8 +561,7 @@ fn handler_display_input_mode(
             if search_result.clone().exists_match() {
                 let now_position_row = now_line_idx as u64 + 2;
                 let now_position_col = display_lines.cursor_pos.1;
-                if let Some((lnum, _lcol)) = search_result.get_near_line((now_position_row, now_position_col)) {
-                    let lcol = _lcol;
+                if let Some((lnum, lcol)) = search_result.get_near_line((now_position_row, now_position_col)) {
                     // jump to result line
                     execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
 
@@ -584,10 +583,9 @@ fn handler_display_input_mode(
             if search_result.clone().exists_match() {
                 let now_position_row = now_line_idx as u64 + 2;
                 let now_position_col = display_lines.cursor_pos.1;
-                if let Some((lnum, _lcol)) =
+                if let Some((lnum, lcol)) =
                     search_result.get_near_line_with_previous((now_position_row, now_position_col))
                 {
-                    let lcol = _lcol;
                     // jump to result line
                     execute!(stdout(), RestorePosition, SavePosition, Clear(ClearType::All))?;
 
