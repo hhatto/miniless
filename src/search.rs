@@ -49,7 +49,6 @@ impl SearchResult<'_> {
         }
         if pos.is_none() {
             // if not found, search from the beginning
-            pos = self.get_near_line_with_previous(now_pos);
             for idx in 0..self.match_lines.clone().len() {
                 let (line_num, _) = self.match_lines[idx];
                 if line_num < now_pos.0 {
