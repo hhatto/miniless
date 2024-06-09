@@ -74,6 +74,20 @@ impl SearchResult<'_> {
                 break;
             }
         }
+        if pos.is_none() {
+            // if not found, search from the end
+            for idx in (0..self.match_lines.clone().len()).rev() {
+                let (line_num, _) = self.match_lines[idx];
+                if line_num + 1 >= now_pos.0 {
+                    pos = Some(self.match_lines[idx]);
+                    self.now_idx = Some(idx);
+                    break;
+                }
+                if line_num + 1 < now_pos.0 {
+                    break;
+                }
+            }
+        }
         pos
     }
 
