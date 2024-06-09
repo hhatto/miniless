@@ -36,6 +36,7 @@ impl SearchResult<'_> {
     pub fn exists_match(self) -> bool {
         self.now_idx.is_some()
     }
+
     pub fn get_near_line(&mut self, now_pos: (u64, u64)) -> Option<(u64, u64)> {
         let mut pos = None;
         for idx in 0..self.match_lines.clone().len() {
@@ -44,6 +45,21 @@ impl SearchResult<'_> {
                 pos = Some(self.match_lines[idx]);
                 self.now_idx = Some(idx);
                 break;
+            }
+        }
+        if pos.is_none() {
+            // if not found, search from the beginning
+            pos = self.get_near_line_with_previous(now_pos);
+            for idx in 0..self.match_lines.clone().len() {
+                let (line_num, _) = self.match_lines[idx];
+                if line_num < now_pos.0 {
+                    pos = Some(self.match_lines[idx]);
+                    self.now_idx = Some(idx);
+                    break;
+                }
+                if line_num >= now_pos.0 {
+                    break;
+                }
             }
         }
         pos
